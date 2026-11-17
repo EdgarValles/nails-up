@@ -81,7 +81,7 @@ Crea el archivo de variables, que guarda la contraseña de Atlas:
 sudo -u nailsup nano /opt/nails-up/.env
 ```
 ```
-MONGODB_URI=mongodb+srv://TU_USUARIO_ATLAS:LA_CONTRASEÑA@cluster0.xxxxx.mongodb.net/
+MONGODB_URI="mongodb+srv://TU_USUARIO_ATLAS:LA_CONTRASEÑA@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
 MONGODB_DB=nailsup
 PORT=3000
 PUBLIC_ORIGIN=https://portal.tudominio.com
@@ -89,6 +89,7 @@ PUBLIC_ORIGIN=https://portal.tudominio.com
 ```
 sudo chmod 600 /opt/nails-up/.env
 ```
+La URI **va entre comillas dobles**, completa y con todo lo que Atlas pone después del `?` (por ejemplo `?retryWrites=true&w=majority`): sin comillas, el `&` rompe el respaldo.
 Crea la usuaria del portal (pide una contraseña de 12 caracteres o más):
 ```
 sudo -u nailsup bash -c 'cd /opt/nails-up && node --env-file-if-exists=.env server/cli.js crear-usuaria'
@@ -122,7 +123,7 @@ sudo ls -l /var/backups/nailsup
 ```
 Baja una copia a tu computadora (la carpeta solo la lee `nailsup`, por eso se copia primero a tu carpeta):
 ```
-ssh admin@TU_IP 'sudo cp /var/backups/nailsup/nailsup-AAAA-MM-DD.gz ~/ && sudo chown admin ~/nailsup-AAAA-MM-DD.gz'
+ssh -t admin@TU_IP 'sudo cp /var/backups/nailsup/nailsup-AAAA-MM-DD.gz ~/ && sudo chown admin ~/nailsup-AAAA-MM-DD.gz'
 scp admin@TU_IP:nailsup-AAAA-MM-DD.gz .
 ```
 Borra la copia del VPS cuando termines (`rm ~/nailsup-AAAA-MM-DD.gz`).
