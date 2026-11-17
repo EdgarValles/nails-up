@@ -18,7 +18,7 @@
       if (v == null || v === false) continue;
       if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
       else if (k === "class") el.className = v;
-      else if (k === "style") el.setAttribute("style", v);
+      else if (k === "style") el.style.cssText = v;
       else if (k === "value") el.value = v;
       else if (v === true) el.setAttribute(k, "");
       else el.setAttribute(k, v);

@@ -132,3 +132,9 @@ textarea { min-height: 80px; resize: vertical; }
   @keyframes sube { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 }
 [hidden] { display: none !important; }
+
+/* pantalla de acceso */
+.login { max-width: 360px; margin: 0 auto; padding: 14vh 16px 0; display: grid; gap: 18px; text-align: center; }
+.login .brand { font-size: 1.7rem; }
+.login form { text-align: left; }
+#msg { margin: 0; min-height: 1.4em; color: #A3262F; font-size: 0.92rem; }
