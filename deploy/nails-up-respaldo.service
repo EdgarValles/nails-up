@@ -1,0 +1,13 @@
+[Unit]
+Description=Respaldo de la base de Nails Up
+
+[Service]
+Type=oneshot
+User=nailsup
+Group=nailsup
+ExecStart=/opt/nails-up/deploy/respaldo.sh
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/backups/nailsup

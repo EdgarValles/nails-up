@@ -1,0 +1,9 @@
+# Cambia portal.tudominio.com por tu dominio o subdominio (debe apuntar al VPS).
+# Caddy obtiene el certificado y redirige http a https por su cuenta.
+portal.tudominio.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+	log {
+		output file /var/log/caddy/portal.log
+	}
+}

@@ -25,12 +25,21 @@ Necesitas Node.js 22 o más nuevo y MongoDB encendido en tu computadora.
 
 Si MongoDB está apagado, `npm start` termina con el mensaje "No se pudo conectar a MongoDB… Revisa que esté encendido."
 
-El servidor escucha solo en tu computadora (`127.0.0.1`) y rechaza peticiones de otras páginas. No tiene usuario ni contraseña porque nadie más puede llegar a él. Si lo quieres usar desde el celular, hay que agregar un inicio de sesión antes.
+El servidor escucha solo en tu computadora (`127.0.0.1`) y rechaza peticiones de otras páginas. Ahora también en local se pide contraseña (ver "Publicarlo en internet").
 
 ### Variables (`.env`)
 - `MONGODB_URI`: por defecto `mongodb://localhost:27017`
 - `MONGODB_DB`: por defecto `nailsup`
 - `PORT`: por defecto `3000`
+
+## Publicarlo en internet
+El portal ya tiene inicio de sesión con contraseña, así que puede publicarse en un servidor. La guía completa (servidor, dominio, MongoDB Atlas y respaldos) está en [`deploy/README.md`](deploy/README.md).
+
+**Aviso:** la contraseña también se pide en tu computadora. Antes del primer `npm start`, crea tu usuaria una vez:
+```
+node --env-file-if-exists=.env server/cli.js crear-usuaria
+```
+Sin usuaria, `npm start` no arranca y te recuerda este comando.
 
 ## Respaldo
 Tus datos están en la base `nailsup` de MongoDB. Para guardar una copia: `mongodump --db nailsup --out respaldo`.
