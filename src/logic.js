@@ -53,6 +53,34 @@
     return { total, balance: Math.max(0, round2(total - advance)) };
   };
 
+  const dayNumber = (key) => Date.parse(key + "T00:00:00Z") / 86400000;
+  const dmy = (key) => key.slice(8, 10) + "/" + key.slice(5, 7) + "/" + key.slice(0, 4);
+
+  api.inactiveClients = (clients, appointments, today, weeks) => {
+    const out = [];
+    for (const client of clients) {
+      const paid = appointments.filter((a) => a.clientId === client.id && a.status === "cobrada");
+      if (!paid.length) continue;
+      const lastVisit = paid.map((a) => a.start.slice(0, 10)).sort().pop();
+      const weeksAway = Math.floor((dayNumber(today) - dayNumber(lastVisit)) / 7);
+      if (weeksAway >= weeks) out.push({ client, lastVisit, weeksAway });
+    }
+    return out.sort((x, y) => y.weeksAway - x.weeksAway);
+  };
+
+  api.reactivationMessage = (client) =>
+    "Hola " + String(client.name || "").split(" ")[0] + ", hace tiempo que no te vemos en Nails Up. ¿Quieres agendar tu próxima cita?";
+
+  api.promoText = (promo, businessName) => {
+    const vigencia = promo.endDate ? " Vigente hasta el " + dmy(promo.endDate) + "." : "";
+    return promo.name + " en " + businessName + ": " + promo.percent + "% de descuento." + vigencia + " Escríbenos para agendar.";
+  };
+
+  api.findClientByPhone = (clients, rawPhone) => {
+    const p = api.normalizePhone(rawPhone);
+    return p ? clients.find((c) => api.normalizePhone(c.phone) === p) : undefined;
+  };
+
   root.NailsLogic = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
