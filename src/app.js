@@ -133,7 +133,8 @@
 
   /* ---------- formulario de cita ---------- */
   function apptForm(init, existing) {
-    const f = existing ? { ...existing, date: existing.start.slice(0, 10), time: existing.start.slice(11, 16) } : { date: init.date, time: "10:00", clientId: "", serviceId: "", notes: "", advance: "", durationMin: "" };
+    if (init && init.clientId && !existing) init = { ...init };
+    const f = existing ? { ...existing, date: existing.start.slice(0, 10), time: existing.start.slice(11, 16) } : { date: init.date, time: "10:00", clientId: init.clientId || "", serviceId: "", notes: "", advance: "", durationMin: "" };
     let warn = "";
     const clientSel = h("select", { id: "f-client" }, h("option", { value: "" }, "Elige una clienta"),
       S.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map((c) => h("option", { value: c.id, selected: c.id === f.clientId }, c.name)),
@@ -219,7 +220,108 @@
   }
 
   /* ---------- pantallas pendientes (tareas 7 y 8) ---------- */
-  function screenClientas() { return h("div", {}, "Clientas"); }
+  /* ---------- clientas y servicios ---------- */
+  function screenClientas() {
+    const tab = S.clientTab;
+    return h("div", { class: "stack" },
+      h("div", { class: "row between" },
+        h("div", { class: "seg", role: "group", "aria-label": "Sección" },
+          h("button", { "aria-pressed": String(tab === "clientas"), onclick: () => { S.clientTab = "clientas"; render(); } }, "Clientas"),
+          h("button", { "aria-pressed": String(tab === "servicios"), onclick: () => { S.clientTab = "servicios"; render(); } }, "Servicios")),
+        tab === "clientas"
+          ? h("button", { class: "btn", onclick: () => openSheet(() => clientForm()) }, "Nueva clienta")
+          : h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio")),
+      tab === "clientas" ? clientList() : serviceList());
+  }
+  function clientList() {
+    const q = S.clientQuery.trim().toLowerCase();
+    const qd = L.normalizePhone(S.clientQuery);
+    const list = S.clients.filter((c) => !q || c.name.toLowerCase().includes(q) || (qd && L.normalizePhone(c.phone) === qd) || String(c.phone || "").includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return h("div", { class: "stack" },
+      h("input", { type: "search", placeholder: "Buscar por nombre o teléfono", "aria-label": "Buscar clienta", "data-keep": "q", value: S.clientQuery, oninput: (e) => { S.clientQuery = e.target.value; render(); } }),
+      list.length ? h("div", { class: "list" }, list.map((c) => h("button", { class: "item", onclick: () => openSheet(() => clientCard(c.id)) },
+        h("span", {}, h("div", { class: "name" }, c.name), h("div", { class: "muted small" }, c.phone || "Sin teléfono")),
+        h("span", { class: "tag" }, L.paidVisitCount(c.id, S.appts) + " visitas"))))
+        : h("div", { class: "empty" }, h("p", {}, S.clients.length ? "No hay clientas con esa búsqueda." : "Aún no hay clientas. Agrega la primera."), !S.clients.length && h("button", { class: "btn", onclick: () => openSheet(() => clientForm()) }, "Nueva clienta")));
+  }
+  function clientCard(id) {
+    const c = clientOf(id);
+    if (!c) return h("div", {}, h("p", {}, "Esta clienta ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
+    const visits = L.paidVisitCount(c.id, S.appts);
+    const hist = S.appts.filter((a) => a.clientId === c.id).sort((a, b) => byStart(b, a));
+    const wa = L.whatsappLink(c.phone, "Hola " + c.name.split(" ")[0] + ", ");
+    const st = settings();
+    return h("div", { class: "stack" }, h("h2", {}, c.name),
+      h("div", { class: "muted" }, c.phone || "Sin teléfono", c.birthday ? " · cumpleaños " + c.birthday.slice(3, 5) + "/" + c.birthday.slice(0, 2) : "", " · ", visits, " visitas cobradas"),
+      st.loyaltyEvery > 0 && h("div", { class: "note ok" }, "Le faltan " + (st.loyaltyEvery - (visits % st.loyaltyEvery)) + " visitas para su descuento de lealtad."),
+      c.notes && h("div", {}, c.notes),
+      h("div", { class: "row" },
+        h("button", { class: "btn", onclick: () => openSheet(() => apptForm({ date: todayKey() , clientId: c.id }, null, c.id)) }, "Nueva cita"),
+        h("button", { class: "btn sec", onclick: () => openSheet(() => clientForm(c.id)) }, "Editar clienta"),
+        wa && h("a", { class: "btn sec", href: wa, target: "_blank", rel: "noopener", style: "text-decoration:none;display:inline-flex;align-items:center" }, "Abrir WhatsApp"),
+        h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")),
+      h("h3", {}, "Historial"),
+      hist.length ? h("div", { class: "list" }, hist.map((a) => h("div", { class: "item", style: "cursor:default" },
+        h("span", {}, h("div", { class: "name" }, a.serviceName), h("div", { class: "muted small" }, dmy(a.start.slice(0, 10)) + " " + timeOf(a))),
+        h("span", { class: "tag" }, a.status === "cobrada" ? L.formatMXN(a.total) : a.status))))
+        : h("p", { class: "muted" }, "Todavía no tiene citas."));
+  }
+  function clientForm(id) {
+    const c = id ? clientOf(id) : { name: "", phone: "", birthday: "", canal: "whatsapp", notes: "" };
+    const msg = h("div", { "aria-live": "polite" });
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    const mes = h("select", { id: "c-mes" }, h("option", { value: "" }, "Mes"), meses.map((m, i) => h("option", { value: String(i + 1).padStart(2, "0"), selected: c.birthday && c.birthday.slice(0, 2) === String(i + 1).padStart(2, "0") }, m)));
+    const dia = h("input", { id: "c-dia", type: "number", min: "1", max: "31", inputmode: "numeric", placeholder: "Día", value: c.birthday ? Number(c.birthday.slice(3, 5)) : "" });
+    async function save() {
+      msg.replaceChildren();
+      const name = root.querySelector("#c-name").value.trim(), phone = root.querySelector("#c-phone").value.trim();
+      if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la clienta."));
+      if (phone && !L.normalizePhone(phone)) return msg.append(h("div", { class: "note" }, "El teléfono debe tener 10 dígitos."));
+      const dup = phone && L.findClientByPhone(S.clients.filter((x) => x.id !== id), phone);
+      if (dup) return msg.append(h("div", { class: "note" }, "Ya existe " + dup.name + " con ese teléfono. ", h("button", { class: "btn small ghost", onclick: () => openSheet(() => clientCard(dup.id)) }, "Abrir su ficha")));
+      let birthday = "";
+      const m = mes.value, d = Number(dia.value);
+      if (m && d >= 1 && d <= 31) birthday = m + "-" + String(d).padStart(2, "0");
+      const doc = { ...(id ? c : {}), id, name, phone, birthday, canal: root.querySelector("#c-canal").value, notes: root.querySelector("#c-notes").value.trim() };
+      if (await run(Store.save("clients", doc), "Clienta guardada")) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, id ? "Editar clienta" : "Nueva clienta"),
+      h("label", {}, "Nombre", h("input", { id: "c-name", autocomplete: "off", value: c.name })),
+      h("label", {}, "Teléfono", h("input", { id: "c-phone", inputmode: "tel", autocomplete: "off", value: c.phone })),
+      h("div", { class: "grid2" }, h("label", {}, "Mes de cumpleaños", mes), h("label", {}, "Día", dia)),
+      h("label", {}, "Cómo llegó", h("select", { id: "c-canal" }, [["whatsapp", "WhatsApp"], ["facebook", "Facebook"], ["otro", "Otro"]].map(([v, t]) => h("option", { value: v, selected: c.canal === v }, t)))),
+      h("label", {}, "Notas", h("textarea", { id: "c-notes" }, c.notes || "")),
+      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar clienta"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+  }
+  function serviceList() {
+    if (!S.services.length) return h("div", { class: "empty" }, h("p", {}, "Aún no hay servicios. Agrega el primero."), h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio"));
+    return h("div", { class: "list" }, S.services.slice().sort((a, b) => a.name.localeCompare(b.name)).map((v) => h("button", { class: "item", onclick: () => openSheet(() => serviceForm(v.id)) },
+      h("span", {}, h("div", { class: "name" }, h("span", { class: "dotc", style: "background:" + (v.color || TONES[0]) }), v.name), h("div", { class: "muted small" }, v.durationMin + " min")),
+      h("span", {}, v.active === false && h("span", { class: "tag" }, "Inactivo "), v.price ? L.formatMXN(v.price) : h("span", { class: "muted small" }, "Sin precio")))));
+  }
+  function serviceForm(id) {
+    const v = id ? serviceOf(id) : { name: "", price: "", durationMin: 45, color: TONES[S.services.length % TONES.length], active: true };
+    let color = v.color, active = v.active !== false;
+    const msg = h("div", { "aria-live": "polite" });
+    const palette = h("div", { class: "colors", role: "group", "aria-label": "Color del esmalte" });
+    const paint2 = () => palette.replaceChildren(...TONES.map((t) => h("button", { style: "background:" + t, "aria-label": "Color " + t, "aria-pressed": String(t === color), onclick: () => { color = t; paint2(); } })));
+    paint2();
+    async function save() {
+      msg.replaceChildren();
+      const name = root.querySelector("#s-name").value.trim();
+      if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre del servicio."));
+      const doc = { ...(id ? v : {}), id, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
+      if (await run(Store.save("services", doc), "Servicio guardado")) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, id ? "Editar servicio" : "Nuevo servicio"),
+      h("label", {}, "Nombre", h("input", { id: "s-name", autocomplete: "off", value: v.name })),
+      h("div", { class: "grid2" }, h("label", {}, "Precio", h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, "Duración (min)", h("input", { id: "s-dur", type: "number", min: "5", step: "5", value: v.durationMin }))),
+      h("div", {}, h("div", { class: "small", style: "font-weight:600;margin-bottom:6px" }, "Color en la agenda"), palette),
+      h("label", { class: "row", style: "display:flex;gap:10px" }, h("input", { id: "s-active", type: "checkbox", style: "width:22px;min-height:22px", checked: active }), "Disponible para nuevas citas"),
+      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar servicio"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+  }
+
   function screenCobros() { return h("div", {}, "Cobros"); }
   function screenPromos() { return h("div", {}, "Promociones"); }
   function screenResumen() { return h("div", {}, "Resumen"); }
