@@ -37,6 +37,7 @@ function createAuthStore(db, { now = Date.now } = {}) {
   const users = () => db.collection("users");
   const sessions = () => db.collection("sessions");
   const getUser = () => users().findOne({ _id: OWNER });
+  let queue = Promise.resolve();
 
   return {
     async ensureIndexes() {
@@ -60,11 +61,17 @@ function createAuthStore(db, { now = Date.now } = {}) {
         $set: { passwordHash, passwordChangedAt: new Date(now()), failedCount: 0, lockCount: 0, lockedUntil: null },
       });
     },
-    async recordFailure() {
-      const user = await getUser();
-      const change = applyFailure(user, now());
-      await users().updateOne({ _id: OWNER }, { $set: change });
-      return { ...user, ...change };
+    // Se encadenan los fallos para que ninguno se pierda en paralelo
+    recordFailure() {
+      const run = queue.then(async () => {
+        const user = await getUser();
+        if (!user) return null;
+        const change = applyFailure(user, now());
+        await users().updateOne({ _id: OWNER }, { $set: change });
+        return { ...user, ...change };
+      });
+      queue = run.catch(() => {});
+      return run;
     },
     async resetFailures() {
       await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0 } });

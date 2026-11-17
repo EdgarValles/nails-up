@@ -157,3 +157,17 @@ test("ensureIndexes crea los índices TTL", async () => {
   assert.equal(ttl("lastSeenAt").opts.expireAfterSeconds, 604800);
   assert.equal(ttl("createdAt").opts.expireAfterSeconds, 2592000);
 });
+
+test("recordFailure en paralelo no pierde intentos", async () => {
+  const { clock, store } = setup();
+  await store.createUser("h");
+  await Promise.all([1, 2, 3, 4, 5].map(() => store.recordFailure()));
+  const u = await store.getUser();
+  assert.equal(u.lockCount, 1);
+  assert.equal(u.lockedUntil.getTime(), clock.t + LOCK_BASE_MS);
+});
+
+test("recordFailure sin usuaria devuelve null", async () => {
+  const { store } = setup();
+  assert.equal(await store.recordFailure(), null);
+});
