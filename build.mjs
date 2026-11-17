@@ -7,13 +7,18 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(root, "src", f), "utf8");
 const styles = read("styles.css");
-const foto = fs.readFileSync(path.join(root, "src", "img", "acceso.jpg")).toString("base64");
-const fotoAcceso = "\n.login-foto { background-image: url(data:image/jpeg;base64," + foto + "); }\n";
+// las imágenes van incrustadas: la CSP solo permite imágenes propias o data:
+const img = (f, type) => "data:" + type + ";base64," + fs.readFileSync(path.join(root, "src", "img", f)).toString("base64");
+const icono = '<link rel="icon" type="image/png" href="' + img("icono.png", "image/png") + '">';
+const marca = "\n.brand::before { background-image: url(" + img("icono.png", "image/png") + "); }\n";
+const fotoAcceso = marca + ".login-foto { background-image: url(" + img("acceso.jpg", "image/jpeg") + "); }\n" +
+  ".login-logo { background-image: url(" + img("logo.png", "image/png") + "); }\n";
 const pages = {
   "index.html": {
     template: "index.template.html",
     parts: {
-      "/*STYLES*/": styles,
+      "/*STYLES*/": styles + marca,
+      "<!--ICONO-->": icono,
       "/*LOGIC*/": read("logic.js"),
       "/*APIDB*/": read("api-db.js"),
       "/*DATA*/": read("data.js"),
@@ -22,8 +27,7 @@ const pages = {
   },
   "login.html": {
     template: "login.template.html",
-    // la foto del salón va incrustada: la CSP solo permite imágenes propias o data:
-    parts: { "/*STYLES*/": styles + fotoAcceso, "/*LOGIN*/": read("login.js") },
+    parts: { "/*STYLES*/": styles + fotoAcceso, "<!--ICONO-->": icono, "/*LOGIN*/": read("login.js") },
   },
 };
 const sha = (s) => "'sha256-" + crypto.createHash("sha256").update(s, "utf8").digest("base64") + "'";

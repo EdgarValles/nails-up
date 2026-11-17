@@ -36,9 +36,8 @@ a { color: inherit; }
 .main { padding: 0 16px 104px; max-width: 1180px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; color: var(--tinta); }
-.brand::before { /* la gota de esmalte */
-  content: ""; width: 12px; height: 17px; border-radius: 6px 6px 7px 7px; background: var(--orquidea);
-  box-shadow: inset 2px 2px 0 rgba(255,255,255,.45);
+.brand::before { /* el símbolo del logo: la mano con flores */
+  content: ""; width: 30px; height: 30px; background: center / contain no-repeat;
 }
 .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--superficie); border-top: 1px solid var(--linea); padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
 .nav .brand, .nav .salir { display: none; }
@@ -53,7 +52,8 @@ a { color: inherit; }
   #app { display: grid; grid-template-columns: var(--lado) minmax(0, 1fr); }
   .topbar { display: none; }
   .nav { position: sticky; top: 0; height: 100vh; border-top: 0; border-right: 1px solid var(--linea); padding: 22px 14px; display: flex; flex-direction: column; gap: 22px; }
-  .nav .brand { display: inline-flex; padding: 0 10px; font-size: 1.2rem; }
+  .nav .brand { display: inline-flex; padding: 0 6px; font-size: 1.2rem; }
+  .nav .brand::before { width: 38px; height: 38px; }
   .nav ul { display: grid; grid-template-columns: 1fr; gap: 2px; }
   .nav button { display: flex; align-items: center; justify-items: start; gap: 12px; padding: 0 12px; min-height: 42px; font-size: .95rem; color: var(--tinta-suave); }
   .nav button:hover { background: var(--fondo); color: var(--tinta); }
@@ -238,8 +238,9 @@ textarea { min-height: 80px; resize: vertical; }
 .login-foto { position: relative; align-self: stretch; margin: 0 -16px; height: 72vw; background-color: var(--lila-tenue); background-size: 215% auto; background-repeat: no-repeat; background-position: 12% 50%; }
 .login-foto::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(to bottom, rgba(246, 244, 248, 0), var(--fondo)); }
 .login-card { position: relative; z-index: 1; margin-top: -20px; width: 100%; max-width: 400px; background: var(--superficie); border: 1px solid var(--linea); border-radius: 18px; padding: 30px 28px; display: grid; gap: 18px; box-shadow: inset 0 4px 0 var(--orquidea), 0 18px 40px rgba(36, 22, 49, .12); }
-@media (min-width: 700px) { .login-foto { height: auto; aspect-ratio: 1600 / 557; max-height: 64vh; background-size: cover; background-position: 20% 50%; } .login-card { margin-top: -40px; } }
-.login-card .brand { font-size: 1.4rem; }
+@media (min-width: 700px) { .login-foto { height: auto; aspect-ratio: 1600 / 557; max-height: 54vh; background-size: cover; background-position: 20% 50%; } .login-card { margin-top: -40px; } }
+.login-logo { justify-self: center; width: 140px; aspect-ratio: 340 / 304; background: center / contain no-repeat; }
+.login-card > p { text-align: center; }
 .login-card p { margin: 0; color: var(--tinta-suave); }
 .login form { display: grid; gap: 14px; }
 .login .btn { width: 100%; }
