@@ -482,6 +482,12 @@
     let db = null;
     if (location.hash === "#demo") { db = demoDb(); window.__demoDb = db; }
     else { try { db = typeof claude !== "undefined" ? await claude.use("db") : null; } catch (_) { db = null; } }
+    if (!db && location.protocol === "http:") {
+      // modo local: el servidor de este proyecto guarda los datos en MongoDB
+      db = createApiDb("");
+      try { const r = await fetch("/api/settings"); if (!r.ok) throw new Error(); }
+      catch (_) { S.error = "No se pudo conectar con el servidor local. Revisa que npm start esté corriendo."; }
+    }
     Store.init(db);
     S.loading = false;
     if (!db) return render();
