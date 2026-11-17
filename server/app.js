@@ -1,25 +1,60 @@
-// API local de Nails Up: expone el almacén por HTTP, solo para esta computadora
+// Portal de Nails Up: páginas y API detrás de una sesión, en localhost o detrás de Caddy
 const express = require("express");
 const path = require("node:path");
+const { createAuth } = require("./auth.js");
+const { buildCsp, securityHeaders } = require("./security.js");
 
 const COLLECTIONS = new Set(["clients", "services", "appointments", "promos", "settings"]);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
-function createApp(store) {
+const DIST = path.join(__dirname, "..", "dist");
+const SAFE_METHODS = new Set(["GET", "HEAD"]);
+
+function createApp(store, { authStore, publicOrigin = "", csp, now = Date.now, log } = {}) {
+  if (!authStore) throw new Error("Falta authStore.");
+  if (!csp || !csp["index.html"] || !csp["login.html"]) throw new Error("Falta csp.json; corre npm run build.");
+  const https = publicOrigin.startsWith("https:");
+  const pub = publicOrigin ? new URL(publicOrigin) : null;
+  const pageCsp = { "index.html": buildCsp(csp["index.html"]), "login.html": buildCsp(csp["login.html"]) };
+  const auth = createAuth({ authStore, now, secure: https, ...(log ? { log } : {}) });
+
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", "loopback");
 
-  // Solo se acepta tráfico dirigido a localhost y sin Origin ajeno
+  // Primero: toda respuesta, incluso 403, 404 y errores, lleva los encabezados de seguridad
+  app.use(securityHeaders({ https }));
+
+  // Solo se acepta tráfico dirigido a localhost o al dominio público, y con Origin propio
   app.use((req, res, next) => {
     const port = req.socket.localPort;
     const hosts = ["localhost:" + port, "127.0.0.1:" + port];
-    if (!hosts.includes(req.headers.host)) return res.status(403).json({ error: "Acceso no permitido." });
+    const origins = hosts.map((h) => "http://" + h);
+    if (pub) { hosts.push(pub.host); origins.push(pub.origin); }
+    const deny = () => res.status(403).json({ error: "Acceso no permitido." });
+    if (!hosts.includes(req.headers.host)) return deny();
     const origin = req.headers.origin;
-    if (origin && !hosts.map((h) => "http://" + h).includes(origin)) return res.status(403).json({ error: "Acceso no permitido." });
+    if (origin ? !origins.includes(origin) : !SAFE_METHODS.has(req.method)) return deny();
     next();
   });
 
-  app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "..", "dist", "index.html")));
+  const noStore = (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); };
+  const page = (name) => (_req, res, next) => {
+    res.set({ "Content-Security-Policy": pageCsp[name], "Cache-Control": "no-store" });
+    res.sendFile(path.join(DIST, name), { cacheControl: false }, (err) => err && next(err));
+  };
+
+  app.get("/", noStore, auth.requireSession, page("index.html"));
+  // Con sesión válida no tiene caso ver el login; si no se puede verificar, se muestra el login
+  app.get("/login", noStore, async (req, res, next) => {
+    let session = null;
+    try { session = await auth.currentSession(req); } catch { /* se muestra el login */ }
+    if (session) return res.redirect(302, "/");
+    next();
+  }, page("login.html"));
+
+  app.use("/api", noStore);
+  app.use("/api/auth", auth.router);
 
   const api = express.Router();
   api.param("col", (req, res, next, col) => (COLLECTIONS.has(col) ? next() : res.status(400).json({ error: "Colección no válida." })));
@@ -44,7 +79,7 @@ function createApp(store) {
   api.delete("/:col/:id", async (req, res) => {
     try { await store.remove(req.params.col, req.params.id); res.status(204).end(); } catch { fail(res); }
   });
-  app.use("/api", api);
+  app.use("/api", auth.requireSession, api);
 
   // errores de cuerpo (demasiado grande o JSON roto)
   app.use((err, _req, res, _next) => {
