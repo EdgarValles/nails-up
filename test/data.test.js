@@ -84,3 +84,21 @@ test("without a database, ready is false and save rejects with a clear message",
   assert.strictEqual(Store.ready, false);
   await assert.rejects(() => Store.save("clients", { name: "x" }), /No hay conexión con la base de datos/);
 });
+
+test("seedDefaults waits for a confirmed snapshot, ignoring an empty cached one", async () => {
+  const Store = fresh();
+  let emit;
+  const written = [];
+  const db = { collection: () => ({
+    doc: (id) => ({ id: id || "x" + written.length, set: async (b) => { written.push(b); }, delete: async () => {} }),
+    onSnapshot: (cb) => { emit = cb; cb({ docs: [], metadata: { fromCache: true } }); return () => {}; },
+  }) };
+  Store.init(db);
+  const seeding = Store.seedDefaults();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.strictEqual(written.length, 0);
+  emit({ docs: [{ id: "main", data: () => ({ loyaltyEvery: 6 }) }], metadata: { fromCache: false } });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.strictEqual(written.length, 0); // settings ya existe; services sigue sin confirmarse
+  void seeding;
+});

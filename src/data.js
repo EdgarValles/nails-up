@@ -20,7 +20,7 @@
         (snap) => {
           s.docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           s.listeners.forEach((cb) => cb(s.docs));
-          resolve(s.docs);
+          if (!(snap.metadata && snap.metadata.fromCache)) resolve(s.docs);
         },
         () => resolve(s.docs)
       );

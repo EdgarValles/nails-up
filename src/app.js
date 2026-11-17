@@ -219,7 +219,6 @@
         h("button", { class: "btn ghost", onclick: () => openSheet(() => apptDetail(id)) }, "Volver")));
   }
 
-  /* ---------- pantallas pendientes (tareas 7 y 8) ---------- */
   /* ---------- clientas y servicios ---------- */
   function screenClientas() {
     const tab = S.clientTab;
@@ -327,6 +326,147 @@
   function screenResumen() { return h("div", {}, "Resumen"); }
   function chargeForm() { return h("div", {}, "Cobrar"); }
 
+  /* ---------- cobros ---------- */
+  function chargeForm(id) {
+    const a0 = S.appts.find((x) => x.id === id);
+    if (!a0) return h("div", {}, h("p", {}, "Esta cita ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
+    const c = clientOf(a0.clientId) || { id: a0.clientId, name: "Clienta" };
+    const visits = L.paidVisitCount(a0.clientId, S.appts);
+    let quitado = false;
+    const sub = h("input", { id: "p-sub", type: "number", min: "0", inputmode: "decimal", value: a0.price || "" });
+    const adv = h("input", { id: "p-adv", type: "number", min: "0", inputmode: "decimal", value: a0.advance || "" });
+    const method = h("select", { id: "p-method" }, h("option", { value: "efectivo" }, "Efectivo"), h("option", { value: "transferencia" }, "Transferencia"));
+    const info = h("div", { class: "stack", "aria-live": "polite" });
+    const msg = h("div", { "aria-live": "polite" });
+    let cur = { discount: { kind: "ninguno", label: "Sin descuento", amount: 0 }, total: 0, balance: 0 };
+    function recalc() {
+      const subtotal = num(sub.value);
+      const sug = L.suggestDiscount({ client: c, paidVisits: visits, promos: S.promos, settings: settings(), today: todayKey(), subtotal });
+      const discount = quitado ? { kind: "ninguno", label: "Sin descuento", amount: 0 } : sug;
+      const ch = L.computeCharge({ subtotal, discountAmount: discount.amount, advance: num(adv.value) });
+      cur = { discount, ...ch };
+      info.replaceChildren(
+        sug.kind !== "ninguno" && h("div", { class: "note ok" }, quitado ? "Descuento quitado (" + sug.label + ")" : "Descuento sugerido: " + sug.label + " (−" + L.formatMXN(sug.amount) + ") ",
+          h("button", { class: "btn small ghost", onclick: () => { quitado = !quitado; recalc(); } }, quitado ? "Aplicar descuento" : "Quitar descuento")),
+        h("div", { class: "row between" }, h("span", {}, "Total"), h("span", { class: "big" }, L.formatMXN(ch.total))),
+        h("div", { class: "row between muted" }, h("span", {}, "Saldo por cobrar tras el anticipo"), h("span", {}, L.formatMXN(ch.balance))));
+    }
+    sub.addEventListener("input", recalc); adv.addEventListener("input", recalc);
+    recalc();
+    async function cobrar() {
+      msg.replaceChildren();
+      const fresh = S.appts.find((x) => x.id === id);
+      if (!fresh || fresh.status !== "pendiente") return msg.append(h("div", { class: "note" }, "Esta cita ya fue cobrada o cancelada."));
+      if (!num(sub.value)) return msg.append(h("div", { class: "note" }, "Escribe el precio del servicio."));
+      const doc = { ...fresh, status: "cobrada", subtotal: num(sub.value), advance: num(adv.value), total: cur.total, balance: cur.balance, method: method.value, discountKind: cur.discount.kind, discountAmount: cur.discount.amount, paidAt: todayKey() };
+      if (await run(Store.save("appointments", doc), "Cobrado")) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, "Cobrar a " + c.name), h("div", { class: "muted" }, a0.serviceName, " · ", visits, " visitas cobradas"),
+      h("div", { class: "grid2" }, h("label", {}, "Precio del servicio", sub), h("label", {}, "Anticipo recibido", adv)),
+      h("label", {}, "Método de pago", method), info, msg,
+      h("div", { class: "row" }, h("button", { class: "btn", onclick: cobrar }, "Cobrar"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+  }
+  function screenCobros() {
+    const now = todayKey();
+    const pend = S.appts.filter((a) => a.status === "pendiente" && a.start.slice(0, 10) <= now).sort(byStart);
+    const done = S.appts.filter((a) => a.status === "cobrada").sort((a, b) => byStart(b, a)).slice(0, 20);
+    return h("div", { class: "stack" }, h("h1", {}, "Cobros"),
+      h("h3", {}, "Por cobrar"),
+      pend.length ? h("div", { class: "list" }, pend.map(swatch)) : h("div", { class: "empty" }, h("p", {}, "No hay citas por cobrar. Las citas de hoy y de días pasados aparecen aquí.")),
+      h("h3", {}, "Cobros recientes"),
+      done.length ? h("div", { class: "list" }, done.map((a) => { const c = clientOf(a.clientId); return h("button", { class: "item", onclick: () => openSheet(() => apptDetail(a.id)) },
+        h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName + " · " + dmy(a.paidAt || a.start.slice(0, 10)) + " · " + a.method + (a.discountAmount ? " · descuento " + L.formatMXN(a.discountAmount) : ""))),
+        h("span", { class: "name" }, L.formatMXN(a.total))); }))
+        : h("p", { class: "muted" }, "Todavía no hay cobros registrados."));
+  }
+
+  /* ---------- promociones y captación ---------- */
+  function promoActiveToday(p) {
+    const t = todayKey();
+    return p.active && (p.type === "cumpleanos" || (p.startDate <= t && t <= p.endDate));
+  }
+  function screenPromos() {
+    const tab = S.promoTab || "promos";
+    return h("div", { class: "stack" },
+      h("div", { class: "row between" },
+        h("div", { class: "seg", role: "group", "aria-label": "Sección" },
+          h("button", { "aria-pressed": String(tab === "promos"), onclick: () => { S.promoTab = "promos"; render(); } }, "Promociones"),
+          h("button", { "aria-pressed": String(tab === "captacion"), onclick: () => { S.promoTab = "captacion"; render(); } }, "Captación")),
+        tab === "promos" && h("button", { class: "btn", onclick: () => openSheet(() => promoForm()) }, "Nueva promoción")),
+      tab === "promos" ? promoList() : outreach());
+  }
+  function saveSettings(patch, okMsg) { return run(Store.save("settings", { ...settings(), ...patch, id: "main" }), okMsg); }
+  function promoList() {
+    const st = settings();
+    const loy = h("div", { class: "card stack" }, h("h3", {}, "Lealtad"), h("p", { class: "muted small", style: "margin:0" }, "Descuento automático en cierta visita cobrada de cada clienta."),
+      h("div", { class: "grid2" },
+        h("label", {}, "Cada cuántas visitas", h("input", { id: "l-every", type: "number", min: "0", value: st.loyaltyEvery })),
+        h("label", {}, "Descuento (%)", h("input", { id: "l-pct", type: "number", min: "0", max: "100", value: st.loyaltyPercent }))),
+      h("div", {}, h("button", { class: "btn sec", onclick: () => saveSettings({ loyaltyEvery: Math.max(0, Math.floor(Number(root.querySelector("#l-every").value) || 0)), loyaltyPercent: Math.min(100, Math.max(0, Number(root.querySelector("#l-pct").value) || 0)) }, "Lealtad guardada") }, "Guardar lealtad")));
+    const rows = S.promos.slice().sort((a, b) => a.name.localeCompare(b.name));
+    return h("div", { class: "stack" }, loy,
+      rows.length ? h("div", { class: "list" }, rows.map((p) => h("div", { class: "card stack" },
+        h("div", { class: "row between" }, h("div", {}, h("div", { class: "name", style: "font-weight:650" }, p.name), h("div", { class: "muted small" }, p.percent + "% · " + (p.type === "cumpleanos" ? "mes de cumpleaños" : dmy(p.startDate) + " al " + dmy(p.endDate)))),
+          h("span", { class: "tag" }, promoActiveToday(p) ? "Activa hoy" : p.active ? "Programada" : "Apagada")),
+        h("div", { class: "row" },
+          h("button", { class: "btn small sec", onclick: () => openSheet(() => promoForm(p.id)) }, "Editar"),
+          p.active && h("button", { class: "btn small ghost", onclick: async () => { try { await navigator.clipboard.writeText(L.promoText(p, "Nails Up")); toast("Texto copiado"); } catch (_) { openSheet(() => h("div", { class: "stack" }, h("h2", {}, "Texto de la promoción"), h("textarea", { readonly: true }, L.promoText(p, "Nails Up")), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"))); } } }, "Copiar texto")))))
+        : h("div", { class: "empty" }, h("p", {}, "Aún no hay promociones de temporada ni de cumpleaños."), h("button", { class: "btn", onclick: () => openSheet(() => promoForm()) }, "Nueva promoción")));
+  }
+  function promoForm(id) {
+    const p = id ? S.promos.find((x) => x.id === id) : { name: "", type: "temporada", percent: 10, startDate: todayKey(), endDate: addDays(todayKey(), 14), active: true };
+    const msg = h("div", { "aria-live": "polite" });
+    const tipo = h("select", { id: "pr-type" }, h("option", { value: "temporada", selected: p.type === "temporada" }, "Temporada (con fechas)"), h("option", { value: "cumpleanos", selected: p.type === "cumpleanos" }, "Cumpleaños"));
+    const fechas = h("div", { class: "grid2", hidden: p.type === "cumpleanos" }, h("label", {}, "Desde", h("input", { id: "pr-from", type: "date", value: p.startDate || "" })), h("label", {}, "Hasta", h("input", { id: "pr-to", type: "date", value: p.endDate || "" })));
+    tipo.addEventListener("change", () => { fechas.hidden = tipo.value === "cumpleanos"; });
+    async function save() {
+      msg.replaceChildren();
+      const name = root.querySelector("#pr-name").value.trim(), percent = Number(root.querySelector("#pr-pct").value), type = tipo.value;
+      const from = root.querySelector("#pr-from").value, to = root.querySelector("#pr-to").value;
+      if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la promoción."));
+      if (!(percent > 0 && percent <= 100)) return msg.append(h("div", { class: "note" }, "El descuento debe estar entre 1 y 100."));
+      if (type === "temporada" && (!from || !to || to < from)) return msg.append(h("div", { class: "note" }, "Indica las fechas; la fecha final no puede ser antes de la inicial."));
+      const doc = { ...(id ? p : {}), id, name, type, percent, active: root.querySelector("#pr-act").checked, ...(type === "temporada" ? { startDate: from, endDate: to } : { startDate: "", endDate: "" }) };
+      if (await run(Store.save("promos", doc), "Promoción guardada")) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, id ? "Editar promoción" : "Nueva promoción"),
+      h("label", {}, "Nombre", h("input", { id: "pr-name", autocomplete: "off", value: p.name })),
+      h("div", { class: "grid2" }, h("label", {}, "Tipo", tipo), h("label", {}, "Descuento (%)", h("input", { id: "pr-pct", type: "number", min: "1", max: "100", value: p.percent }))),
+      fechas,
+      h("label", { class: "row", style: "display:flex;gap:10px" }, h("input", { id: "pr-act", type: "checkbox", style: "width:22px;min-height:22px", checked: p.active !== false }), "Promoción activa"),
+      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar promoción"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+  }
+  function outreach() {
+    const st = settings();
+    const list = L.inactiveClients(S.clients, S.appts, todayKey(), st.inactiveWeeks);
+    return h("div", { class: "stack" },
+      h("div", { class: "card stack" }, h("h3", {}, "Clientas que no han vuelto"),
+        h("div", { class: "row" }, h("label", { style: "flex:1" }, "Semanas sin venir", h("input", { id: "o-weeks", type: "number", min: "1", value: st.inactiveWeeks })),
+          h("button", { class: "btn sec", onclick: () => saveSettings({ inactiveWeeks: Math.max(1, Math.floor(Number(root.querySelector("#o-weeks").value) || 5)) }, "Plazo guardado") }, "Guardar plazo"))),
+      list.length ? h("div", { class: "list" }, list.map(({ client, weeksAway }) => { const link = L.whatsappLink(client.phone, L.reactivationMessage(client)); return h("div", { class: "item", style: "cursor:default" },
+        h("span", {}, h("div", { class: "name" }, client.name), h("div", { class: "muted small" }, weeksAway + " semanas sin venir")),
+        link ? h("a", { class: "btn small", href: link, target: "_blank", rel: "noopener", style: "text-decoration:none;display:inline-flex;align-items:center" }, "Escribir por WhatsApp") : h("span", { class: "muted small" }, "Sin teléfono")); }))
+        : h("div", { class: "empty" }, h("p", {}, "Nadie lleva " + st.inactiveWeeks + " semanas o más sin venir.")));
+  }
+
+  /* ---------- resumen ---------- */
+  function screenResumen() {
+    const t = todayKey(), month = t.slice(0, 7);
+    const paid = S.appts.filter((a) => a.status === "cobrada");
+    const day = (a) => a.paidAt || a.start.slice(0, 10);
+    const sum = (arr) => arr.reduce((n, a) => n + (a.total || 0), 0);
+    const pendientes = apptsOn(t).filter((a) => a.status === "pendiente").length;
+    const activas = S.promos.filter(promoActiveToday);
+    return h("div", { class: "stack" }, h("h1", {}, "Resumen"),
+      h("div", { class: "stats" },
+        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos de hoy"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a) === t))))),
+        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos del mes"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a).startsWith(month)))))),
+        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Citas pendientes hoy"), h("span", { class: "big" }, pendientes))),
+      h("h3", {}, "Promociones activas hoy"),
+      activas.length ? h("div", { class: "list" }, activas.map((p) => h("div", { class: "item", style: "cursor:default" }, h("span", { class: "name" }, p.name), h("span", { class: "tag" }, p.percent + "%"))))
+        : h("p", { class: "muted" }, "No hay promociones activas hoy."));
+  }
+
   /* ---------- arranque ---------- */
   function demoDb() {
     const cols = {}, subs = {};
@@ -340,7 +480,7 @@
   async function boot() {
     render();
     let db = null;
-    if (location.hash === "#demo") db = demoDb();
+    if (location.hash === "#demo") { db = demoDb(); window.__demoDb = db; }
     else { try { db = typeof claude !== "undefined" ? await claude.use("db") : null; } catch (_) { db = null; } }
     Store.init(db);
     S.loading = false;
