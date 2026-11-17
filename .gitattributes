@@ -4,3 +4,5 @@
 *.css text eol=lf
 src/* text eol=lf
 deploy/* text eol=lf
+*.jpg binary
+*.png binary

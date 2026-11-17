@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(root, "src", f), "utf8");
 const styles = read("styles.css");
+const foto = fs.readFileSync(path.join(root, "src", "img", "acceso.jpg")).toString("base64");
+const fotoAcceso = "\n.login-foto { background-image: url(data:image/jpeg;base64," + foto + "); }\n";
 const pages = {
   "index.html": {
     template: "index.template.html",
@@ -20,7 +22,8 @@ const pages = {
   },
   "login.html": {
     template: "login.template.html",
-    parts: { "/*STYLES*/": styles, "/*LOGIN*/": read("login.js") },
+    // la foto del salón va incrustada: la CSP solo permite imágenes propias o data:
+    parts: { "/*STYLES*/": styles + fotoAcceso, "/*LOGIN*/": read("login.js") },
   },
 };
 const sha = (s) => "'sha256-" + crypto.createHash("sha256").update(s, "utf8").digest("base64") + "'";
