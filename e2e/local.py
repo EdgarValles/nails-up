@@ -1,20 +1,28 @@
-import subprocess, time, urllib.request, signal
+import os, subprocess, time, urllib.request, signal
 from playwright.sync_api import sync_playwright
 
-srv = subprocess.Popen(["node", "e2e/serve-memory.mjs"], cwd="/home/claude/nails-up")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHROME = "/usr/bin/google-chrome"
+srv = subprocess.Popen(["node", "e2e/serve-memory.mjs"], cwd=ROOT)
 for _ in range(50):
     try:
-        urllib.request.urlopen("http://127.0.0.1:3100/api/settings"); break
+        urllib.request.urlopen("http://127.0.0.1:3100/login"); break
     except Exception:
         time.sleep(0.1)
 try:
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
+        opts = {"args": ["--no-sandbox"]}
+        if os.path.exists(CHROME):
+            opts["executable_path"] = CHROME
+        b = p.chromium.launch(**opts)
         pg = b.new_page(viewport={"width": 390, "height": 800})
         errs = []
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto("http://localhost:3100/")
+        pg.wait_for_selector("#pw")
+        pg.fill("#pw", "portal-de-prueba-1"); pg.click("#go")
+        pg.wait_for_selector(".top")
         pg.wait_for_selector(".empty")
         pg.wait_for_function("document.querySelector('.empty') !== null")
         # seed defaults -> servicios disponibles

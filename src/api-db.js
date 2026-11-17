@@ -2,7 +2,8 @@
 (function (root) {
   const NET_ERR = "No hay conexión con el servidor local. ¿Está encendido?";
 
-  function createApiDb(baseUrl, fetchFn) {
+  function createApiDb(baseUrl, fetchFn, { onUnauthorized } = {}) {
+    const onUnauth = onUnauthorized || (() => root.location.assign("/login"));
     const doFetch = fetchFn || ((...a) => root.fetch(...a));
     const subs = {}; // colección -> Set de { next, error }
 
@@ -10,6 +11,7 @@
       let res;
       try { res = await doFetch(baseUrl + url, opts); } catch (_) { throw new Error(NET_ERR); }
       if (!res.ok) {
+        if (res.status === 401) { try { onUnauth(); } catch (_) {} }
         let msg = "No se pudo completar la operación. Intenta de nuevo.";
         try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
         throw new Error(msg);

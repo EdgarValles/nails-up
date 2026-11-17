@@ -71,3 +71,20 @@ test("the build includes createApiDb in dist/index.html", () => {
   execFileSync("node", ["build.mjs"], { cwd: root });
   assert.ok(fs.readFileSync(path.join(root, "dist/index.html"), "utf8").includes("createApiDb"));
 });
+
+const MSG401 = "Tu sesión terminó. Vuelve a entrar.";
+const fetch401 = async () => ({ ok: false, status: 401, json: async () => ({ error: MSG401 }) });
+test("un 401 en set llama onUnauthorized una vez y rechaza con el mensaje", async () => {
+  let n = 0;
+  const db = createApiDb("", fetch401, { onUnauthorized: () => n++ });
+  await assert.rejects(() => db.collection("clients").doc("a").set({}), new RegExp(MSG401));
+  assert.strictEqual(n, 1);
+});
+test("un 401 en onSnapshot llama onUnauthorized y avisa al suscriptor", async () => {
+  let n = 0, err;
+  const db = createApiDb("", fetch401, { onUnauthorized: () => n++ });
+  db.collection("clients").onSnapshot(() => {}, (e) => (err = e));
+  await tick();
+  assert.strictEqual(n, 1);
+  assert.strictEqual(err.message, MSG401);
+});

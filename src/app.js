@@ -78,7 +78,8 @@
       return;
     }
     const screens = { agenda: screenAgenda, clientas: screenClientas, cobros: screenCobros, promos: screenPromos, resumen: screenResumen };
-    root.append(h("div", { class: "top" }, h("span", { class: "brand" }, "Nails Up")),
+    root.append(h("div", { class: "top" }, h("span", { class: "brand" }, "Nails Up"),
+        S.server && h("button", { class: "btn small ghost", onclick: logout }, "Salir")),
       S.error && h("div", { class: "note", role: "alert" }, S.error + " ", h("button", { class: "btn small ghost", onclick: () => { S.error = ""; render(); } }, "Cerrar")),
       screens[S.tab]());
     root.append(tabs());
@@ -477,16 +478,24 @@
       onSnapshot: (cb) => { (subs[c] = subs[c] || []).push(cb); setTimeout(() => notify(c), 0); return () => {}; },
     }) };
   }
+  async function logout() {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch (_) {}
+    location.assign("/login");
+  }
   async function boot() {
     render();
     let db = null;
     if (location.hash === "#demo") { db = demoDb(); window.__demoDb = db; }
     else { try { db = typeof claude !== "undefined" ? await claude.use("db") : null; } catch (_) { db = null; } }
-    if (!db && location.protocol === "http:") {
-      // modo local: el servidor de este proyecto guarda los datos en MongoDB
+    if (!db && (location.protocol === "http:" || location.protocol === "https:")) {
+      // modo servidor: el servidor de este proyecto guarda los datos en MongoDB
       db = createApiDb("");
-      try { const r = await fetch("/api/settings"); if (!r.ok) throw new Error(); }
-      catch (_) { S.error = "No se pudo conectar con el servidor local. Revisa que npm start esté corriendo."; }
+      S.server = true;
+      try {
+        const r = await fetch("/api/settings");
+        if (r.status === 401) { location.assign("/login"); return; }
+        if (!r.ok) throw new Error();
+      } catch (_) { S.error = "No se pudo conectar con el servidor. Intenta de nuevo."; }
     }
     Store.init(db);
     S.loading = false;
