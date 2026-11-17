@@ -139,6 +139,19 @@ test("recordFailure, resetFailures y unlock", async () => {
   assert.equal((await store.getUser()).failedCount, 0);
 });
 
+test("resetFailures reinicia failedCount y lockCount", async () => {
+  const { store } = setup();
+  await store.createUser("h");
+  for (let i = 0; i < 7; i++) await store.recordFailure();
+  let u = await store.getUser();
+  assert.equal(u.lockCount, 1);
+  assert.equal(u.failedCount, 2);
+  await store.resetFailures();
+  u = await store.getUser();
+  assert.equal(u.failedCount, 0);
+  assert.equal(u.lockCount, 0);
+});
+
 test("deleteSession y deleteAllSessions", async () => {
   const { store } = setup();
   await store.createUser("h");

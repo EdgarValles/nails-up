@@ -12,6 +12,8 @@ const T0 = Date.UTC(2026, 0, 1);
 const EXPIRED = "Tu sesión terminó. Vuelve a entrar.";
 let HASH;
 test.before(async () => { HASH = await hashPassword(GOOD); });
+const open = new Set();
+test.afterEach(async () => { for (const c of open) await c(); open.clear(); });
 
 async function start({ secure = false, storeOverrides = {}, noUser = false } = {}) {
   const db = fakeMongo();
@@ -29,7 +31,9 @@ async function start({ secure = false, storeOverrides = {}, noUser = false } = {
   const server = await new Promise((r) => { const s = app.listen(0, "127.0.0.1", () => r(s)); });
   const port = server.address().port;
   const base = "http://127.0.0.1:" + port;
-  const close = () => new Promise((r) => { server.close(r); server.closeAllConnections(); });
+  let closed = null;
+  const close = () => (closed ||= new Promise((r) => { server.close(r); server.closeAllConnections(); }));
+  open.add(close);
   return { db, clock, authStore, events, port, base, close };
 }
 
@@ -107,7 +111,10 @@ test("contraseña mala 401; al 5.º fallo queda bloqueada 15 min; luego entra", 
   assert.equal(r1.status, 401);
   assert.equal((await r1.json()).error, "Contraseña incorrecta");
   assert.equal(r1.headers.get("set-cookie"), null);
-  for (let i = 0; i < 4; i++) await login(s, "contraseña-mala!");
+  for (let i = 0; i < 3; i++) assert.equal((await login(s, "contraseña-mala!")).status, 401);
+  const fifth = await login(s, "contraseña-mala!");
+  assert.equal(fifth.status, 401);
+  assert.equal((await fifth.json()).error, "Contraseña incorrecta");
   const locked = await login(s, GOOD);
   assert.equal(locked.status, 429);
   assert.match((await locked.json()).error, /Intenta en 15 minutos/);
@@ -119,6 +126,18 @@ test("contraseña mala 401; al 5.º fallo queda bloqueada 15 min; luego entra", 
   assert.equal(ok.status, 204);
   const u = await s.authStore.getUser();
   assert.equal(u.failedCount, 0);
+  await s.close();
+});
+
+test("tras entrar bien, el siguiente bloqueo vuelve a durar 15 minutos", async () => {
+  const s = await start();
+  for (let i = 0; i < 5; i++) await login(s, "contraseña-mala!");
+  s.clock.t += 15 * 60000 + 1;
+  assert.equal((await login(s, GOOD)).status, 204);
+  for (let i = 0; i < 5; i++) assert.equal((await login(s, "contraseña-mala!")).status, 401);
+  const r = await login(s, GOOD);
+  assert.equal(r.status, 429);
+  assert.match((await r.json()).error, /Intenta en 15 minutos/);
   await s.close();
 });
 

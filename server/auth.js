@@ -125,10 +125,9 @@ function createAuth({ authStore, now = Date.now, secure = false, log = defaultLo
         return res.status(429).json({ error: lockedMsg(wait) });
       }
       if (!(await verifyPassword(password, user.passwordHash))) {
-        const updated = await authStore.recordFailure();
+        // El fallo que activa el bloqueo sigue siendo 401; el 429 llega en el siguiente intento
+        await authStore.recordFailure();
         emit(req, "login_fail");
-        const left = lockedFor(updated);
-        if (left > 0) return res.status(429).json({ error: lockedMsg(left) });
         return res.status(401).json({ error: MSG.wrong });
       }
       await authStore.resetFailures();

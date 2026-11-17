@@ -74,7 +74,7 @@ function createAuthStore(db, { now = Date.now } = {}) {
       return run;
     },
     async resetFailures() {
-      await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0 } });
+      await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0, lockCount: 0 } });
     },
     async unlock() {
       await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0, lockedUntil: null } });
