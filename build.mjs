@@ -8,6 +8,7 @@ const read = (f) => fs.readFileSync(path.join(root, "src", f), "utf8");
 const parts = {
   "/*STYLES*/": read("styles.css"),
   "/*LOGIC*/": read("logic.js"),
+  "/*APIDB*/": read("api-db.js"),
   "/*DATA*/": read("data.js"),
   "/*APP*/": read("app.js"),
 };
