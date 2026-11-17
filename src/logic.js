@@ -22,6 +22,32 @@
     return a0 < b0 + b.durationMin && b0 < a0 + a.durationMin;
   };
 
+  // acomoda las citas de un día en la cuadrícula de horas: posición y alto en minutos, y carriles para las que se empalman
+  api.layoutDay = (appointments) => {
+    const minOfDay = (a) => Number(a.start.slice(11, 13)) * 60 + Number(a.start.slice(14, 16));
+    const list = appointments.filter((a) => a.status !== "cancelada")
+      .map((a) => { const s = minOfDay(a); return { appt: a, s, e: s + (Number(a.durationMin) || 30) }; })
+      .sort((x, y) => x.s - y.s || x.e - y.e);
+    let startMin = 9 * 60, endMin = 20 * 60;
+    for (const x of list) {
+      startMin = Math.min(startMin, Math.floor(x.s / 60) * 60);
+      endMin = Math.max(endMin, Math.ceil(x.e / 60) * 60);
+    }
+    const items = [];
+    let cluster = [], laneEnds = [], clusterEnd = -1;
+    const close = () => { for (const it of cluster) it.lanes = laneEnds.length; cluster = []; laneEnds = []; };
+    for (const x of list) {
+      if (x.s >= clusterEnd) close();
+      let lane = laneEnds.findIndex((end) => end <= x.s);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(x.e); } else laneEnds[lane] = x.e;
+      clusterEnd = Math.max(clusterEnd, x.e);
+      const it = { appt: x.appt, top: x.s - startMin, height: Math.max(20, x.e - x.s), lane, lanes: 1 };
+      cluster.push(it); items.push(it);
+    }
+    close();
+    return { startMin, endMin, items };
+  };
+
   api.dateKey = (d) =>
     new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
   const round2 = (n) => Math.round(n * 100) / 100;

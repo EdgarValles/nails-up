@@ -29,9 +29,9 @@ try:
         assert "Contraseña incorrecta" in pg.inner_text("#msg"), pg.inner_text("#msg")
         # contraseña correcta
         pg.fill("#pw", "portal-de-prueba-1"); pg.click("#go")
-        pg.wait_for_selector(".top")
+        pg.wait_for_selector(".main")
         # salir
-        pg.click(".top >> text=Salir")
+        pg.click(".topbar >> text=Salir")
         pg.wait_for_url("**/login")
         assert pg.url.endswith("/login"), pg.url
         print("logs:", logs)

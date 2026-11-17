@@ -24,9 +24,9 @@ with sync_playwright() as p:
     seed["appointments"]["cancel"] = {"clientId": "c1", "serviceId": "s1", "serviceName": "Manicure en gel", "serviceColor": "#D6459A", "start": f"{today}T09:00", "durationMin": 45, "status": "cancelada", "price": 400, "advance": 0}
     seed["appointments"]["hoy"] = {"clientId": "c1", "serviceId": "s1", "serviceName": "Manicure en gel", "serviceColor": "#D6459A", "start": f"{today}T12:00", "durationMin": 45, "status": "pendiente", "price": 400, "advance": 1000}
     pg.evaluate("async (seed) => { for (const [c, docs] of Object.entries(seed)) for (const [id, b] of Object.entries(docs)) await window.__demoDb.collection(c).doc(id).set(b); }", seed)
-    pg.click(".tabs >> text=Cobros")
-    pg.wait_for_selector(".swatch")
-    pg.click(".swatch >> nth=-1")  # la pendiente de hoy
+    pg.click(".nav [data-tab=cobros]")
+    pg.wait_for_selector(".row-appt")
+    pg.click(".row-appt >> nth=-1")  # la pendiente de hoy
     pg.click(".sheet button:text-is('Cobrar')")
     pg.wait_for_selector("#p-sub")
     txt = pg.inner_text(".sheet")
@@ -39,14 +39,14 @@ with sync_playwright() as p:
     pg.click(".sheet button:text-is('Cobrar')"); pg.wait_for_timeout(400)
     print("toast:", pg.inner_text(".toast"))
     # tras cobrar ya no hay botón Cobrar en el detalle
-    pg.click(".tabs >> text=Cobros"); pg.wait_for_timeout(200)
+    pg.click(".nav [data-tab=cobros]"); pg.wait_for_timeout(200)
     pg.click(".item >> nth=0")
     print("detalle cobrada sin boton cobrar:", pg.locator(".sheet button:text-is('Cobrar')").count() == 0)
     pg.click("text=Cerrar >> nth=-1")
-    pg.click(".tabs >> text=Resumen"); pg.wait_for_timeout(200)
+    pg.click(".nav [data-tab=resumen]"); pg.wait_for_timeout(200)
     print("resumen:", pg.inner_text("#app").replace("\n", " | ")[:260])
     # promociones
-    pg.click(".tabs >> text=Promociones")
+    pg.click(".nav [data-tab=promos]")
     pg.click("text=Nueva promoción >> nth=0")
     pg.fill("#pr-name", "Buen Fin"); pg.fill("#pr-pct", "20")
     pg.click("text=Guardar promoción"); pg.wait_for_timeout(300)

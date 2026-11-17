@@ -6,7 +6,7 @@ with sync_playwright() as p:
     pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto("file:///home/claude/nails-up/dist/index.html#demo")
-    pg.click(".tabs >> text=Clientas")
+    pg.click(".nav [data-tab=clientas]")
     pg.wait_for_selector(".empty")
     pg.click("text=Nueva clienta >> nth=0")
     pg.fill("#c-name", "Ana López"); pg.fill("#c-phone", "55 1234 5678")
@@ -29,7 +29,7 @@ with sync_playwright() as p:
     pg.fill('[data-keep="q"]', "ana"); pg.wait_for_timeout(200)
     print("busqueda:", pg.locator(".item").count(), "foco:", pg.evaluate("document.activeElement.dataset.keep"))
     # servicios
-    pg.click("text=Servicios"); pg.wait_for_selector(".item")
+    pg.click(".nav [data-tab=servicios]"); pg.wait_for_selector(".item")
     pg.click("text=Retoque"); pg.fill("#s-price", "150"); pg.click("text=Guardar servicio"); pg.wait_for_timeout(300)
     print("servicio:", pg.inner_text(".item >> nth=-1").replace("\n", " | "))
     pg.screenshot(path="/tmp/servicios.png")

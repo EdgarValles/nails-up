@@ -4,6 +4,21 @@
   const root = document.getElementById("app");
   const TONES = ["#D6459A", "#8E6BD1", "#B8924A", "#2F9C95", "#E0707A", "#5B6FD6"];
   const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const ICONS = {
+    agenda: ["M7 3v3M17 3v3M4 9.5h16", "M5.5 5.5h13a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V7a1.5 1.5 0 0 1 1.5-1.5z"],
+    clientas: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4.5 20c1.4-3.4 4.3-5 7.5-5s6.1 1.6 7.5 5"],
+    servicios: ["M10 3h4v4h-4z", "M8.5 7h7l1.5 3.5V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8.5z"],
+    cobros: ["M3.5 6.5h17v11h-17z", "M12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z", "M7 9.5v.01M17 14.5v.01"],
+    promos: ["M3.5 12V4.5a1 1 0 0 1 1-1H12l8.5 8.5-8.5 8.5z", "M8 8v.01"],
+    resumen: ["M5 20v-8M12 20V5M19 20v-5M3 20h18"],
+    salir: ["M14 4h3.5A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14", "M9.5 16.5 5 12l4.5-4.5M5 12h10"],
+    mas: ["M12 5v14M5 12h14"],
+    antes: ["M14.5 6l-6 6 6 6"],
+    despues: ["M9.5 6l6 6-6 6"],
+    buscar: ["M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4"],
+  };
+  const SECCIONES = [["agenda", "Agenda"], ["clientas", "Clientas"], ["servicios", "Servicios"], ["cobros", "Cobros"], ["promos", "Promociones"], ["resumen", "Resumen"]];
 
   const S = {
     tab: "agenda", view: "dia", date: L.dateKey(new Date()),
@@ -29,11 +44,26 @@
     }
     return el;
   }
+  function icon(name) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("class", "ico");
+    for (const d of ICONS[name]) { const p = document.createElementNS(NS, "path"); p.setAttribute("d", d); svg.append(p); }
+    return svg;
+  }
+  const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  const STATUS = { pendiente: "Pendiente", cobrada: "Cobrada", cancelada: "Cancelada" };
+  const chip = (status) => h("span", { class: "chip " + status }, STATUS[status] || status);
+  const pageHead = (title, ...actions) => h("div", { class: "page-head" }, h("h1", {}, title), h("div", { class: "actions" }, actions));
+  const nowMin = () => { const p = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Mexico_City", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()).split(":"); return Number(p[0]) * 60 + Number(p[1]); };
   const todayKey = () => L.dateKey(new Date());
   const addDays = (key, n) => new Date(Date.parse(key + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
   const weekday = (key) => new Date(key + "T00:00:00Z").getUTCDay();
   const dmy = (key) => key.slice(8, 10) + "/" + key.slice(5, 7) + "/" + key.slice(0, 4);
   const longDate = (key) => DIAS[weekday(key)] + " " + Number(key.slice(8, 10)) + "/" + key.slice(5, 7);
+  const fullDate = (key) => DIAS[weekday(key)] + " " + Number(key.slice(8, 10)) + " de " + MESES[Number(key.slice(5, 7)) - 1];
+  const hhmm = (min) => String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
+  const endOf = (a) => { const m = Number(a.start.slice(11, 13)) * 60 + Number(a.start.slice(14, 16)) + (Number(a.durationMin) || 30); return hhmm(m % 1440); };
   const timeOf = (a) => a.start.slice(11, 16);
   const byStart = (a, b) => a.start.localeCompare(b.start);
   const clientOf = (id) => S.clients.find((c) => c.id === id);
@@ -77,65 +107,138 @@
         h("p", {}, "No se pudo abrir la base de datos. Recarga la página o abre el portal desde tu cuenta.")));
       return;
     }
-    const screens = { agenda: screenAgenda, clientas: screenClientas, cobros: screenCobros, promos: screenPromos, resumen: screenResumen };
-    root.append(h("div", { class: "top" }, h("span", { class: "brand" }, "Nails Up"),
-        S.server && h("button", { class: "btn small ghost", onclick: logout }, "Salir")),
-      S.error && h("div", { class: "note", role: "alert" }, S.error + " ", h("button", { class: "btn small ghost", onclick: () => { S.error = ""; render(); } }, "Cerrar")),
-      screens[S.tab]());
-    root.append(tabs());
+    const screens = { agenda: screenAgenda, clientas: screenClientas, servicios: screenServicios, cobros: screenCobros, promos: screenPromos, resumen: screenResumen };
+    root.append(nav(),
+      h("main", { class: "main" },
+        h("div", { class: "topbar" }, h("span", { class: "brand" }, "Nails Up"),
+          S.server && h("button", { class: "btn small ghost", onclick: logout }, icon("salir"), "Salir")),
+        S.error && h("div", { class: "note", role: "alert" }, S.error + " ", h("button", { class: "btn small ghost", onclick: () => { S.error = ""; render(); } }, "Cerrar")),
+        screens[S.tab]()));
+    if (S.tab === "agenda") root.append(h("button", { class: "fab", "aria-label": "Nueva cita", onclick: () => openSheet(() => apptForm({ date: S.date })) }, icon("mas")));
     if (S.sheet) root.append(S.sheet);
     if (S.toast) root.append(h("div", { class: "toast", role: "status" }, S.toast));
     if (keep) { const el = root.querySelector('[data-keep="' + keep + '"]'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} } }
   }
-  function tabs() {
-    const items = [["agenda", "Agenda"], ["clientas", "Clientas"], ["cobros", "Cobros"], ["promos", "Promociones"], ["resumen", "Resumen"]];
-    return h("div", { class: "tabs" }, h("nav", { "aria-label": "Secciones" },
-      items.map(([id, label]) => h("button", { "aria-current": S.tab === id ? "page" : null, onclick: () => { S.tab = id; render(); } }, label))));
+  function nav() {
+    const short = { promos: "Promos" };
+    return h("nav", { class: "nav", "aria-label": "Secciones" },
+      h("span", { class: "brand" }, "Nails Up"),
+      h("ul", {}, SECCIONES.map(([id, label]) => h("li", {}, h("button", { "data-tab": id, "aria-current": S.tab === id ? "page" : null, onclick: () => { S.tab = id; render(); } },
+        icon(id), h("span", { class: "lbl-largo" }, label), h("span", { class: "lbl-corto" }, short[id] || label))))),
+      S.server && h("button", { class: "salir btn ghost", onclick: logout }, icon("salir"), "Salir"));
   }
+  // la línea de "ahora" se mueve sola cada minuto sin volver a pintar la pantalla
+  setInterval(() => {
+    const line = root.querySelector(".now");
+    if (line) line.style.setProperty("--t", String(nowMin() - Number(line.dataset.start)));
+  }, 60000);
 
   /* ---------- agenda ---------- */
   function screenAgenda() {
     const isWeek = S.view === "semana";
     const step = isWeek ? 7 : 1;
     const start = isWeek ? addDays(S.date, -((weekday(S.date) + 6) % 7)) : S.date;
-    const title = isWeek ? longDate(start) + " al " + longDate(addDays(start, 6)) : longDate(S.date) + (S.date === todayKey() ? " (hoy)" : "");
-    return h("div", { class: "stack" },
-      h("div", { class: "row between" },
-        h("div", { class: "seg", role: "group", "aria-label": "Vista" },
-          h("button", { "aria-pressed": String(!isWeek), onclick: () => { S.view = "dia"; render(); } }, "Día"),
-          h("button", { "aria-pressed": String(isWeek), onclick: () => { S.view = "semana"; render(); } }, "Semana")),
-        h("button", { class: "btn", onclick: () => openSheet(() => apptForm({ date: S.date })) }, "Nueva cita")),
-      h("div", { class: "datebar" },
-        h("button", { class: "iconbtn", "aria-label": "Anterior", onclick: () => { S.date = addDays(S.date, -step); render(); } }, "‹"),
-        h("h2", {}, title),
-        h("button", { class: "btn small sec", onclick: () => { S.date = todayKey(); render(); } }, "Hoy"),
-        h("button", { class: "iconbtn", "aria-label": "Siguiente", onclick: () => { S.date = addDays(S.date, step); render(); } }, "›")),
-      isWeek ? weekView(start) : dayView(S.date));
+    const monday = addDays(S.date, -((weekday(S.date) + 6) % 7));
+    const title = isWeek ? Number(start.slice(8, 10)) + " " + MESES[Number(start.slice(5, 7)) - 1].slice(0, 3) + " – " + Number(addDays(start, 6).slice(8, 10)) + " " + MESES[Number(addDays(start, 6).slice(5, 7)) - 1].slice(0, 3)
+      : fullDate(S.date);
+    return h("div", {},
+      h("div", { class: "page-head" },
+        h("div", { class: "datenav" },
+          h("button", { class: "iconbtn", "aria-label": isWeek ? "Semana anterior" : "Día anterior", onclick: () => { S.date = addDays(S.date, -step); render(); } }, icon("antes")),
+          h("button", { class: "btn small sec", onclick: () => { S.date = todayKey(); render(); } }, "Hoy"),
+          h("button", { class: "iconbtn", "aria-label": isWeek ? "Semana siguiente" : "Día siguiente", onclick: () => { S.date = addDays(S.date, step); render(); } }, icon("despues")),
+          h("h1", { "aria-live": "polite" }, title)),
+        h("div", { class: "actions" },
+          h("div", { class: "seg", role: "group", "aria-label": "Vista" },
+            h("button", { "aria-pressed": String(!isWeek), onclick: () => { S.view = "dia"; render(); } }, "Día"),
+            h("button", { "aria-pressed": String(isWeek), onclick: () => { S.view = "semana"; render(); } }, "Semana")),
+          h("button", { class: "btn solo-ancho", onclick: () => openSheet(() => apptForm({ date: S.date })) }, icon("mas"), "Nueva cita"))),
+      !isWeek && dayStrip(monday),
+      h("div", { class: "agenda-wrap" },
+        calendar(isWeek ? [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i)) : [S.date]),
+        !isWeek && dayPanel(S.date)));
   }
-  function swatch(a) {
+  // tira de la semana para el celular: cambia de día con un toque
+  function dayStrip(monday) {
+    return h("div", { class: "strip", role: "group", "aria-label": "Días de la semana" }, [0, 1, 2, 3, 4, 5, 6].map((i) => {
+      const d = addDays(monday, i), list = apptsOn(d).filter((a) => a.status !== "cancelada");
+      return h("button", { class: d === todayKey() ? "hoy" : "", "aria-current": d === S.date ? "date" : null, "aria-label": fullDate(d) + ", " + list.length + " citas", onclick: () => { S.date = d; render(); } },
+        h("span", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("span", { class: "num" }, Number(d.slice(8, 10))),
+        h("span", { class: "marks" }, list.slice(0, 4).map((a) => h("i", { style: "--c:" + (a.serviceColor || TONES[0]) }))));
+    }));
+  }
+  // cuadrícula de horas: una columna por día, cada cita mide lo que dura
+  function calendar(days) {
+    const layouts = days.map((d) => L.layoutDay(apptsOn(d)));
+    const startMin = Math.min(...layouts.map((l) => l.startMin)), endMin = Math.max(...layouts.map((l) => l.endMin));
+    const week = days.length > 1, today = todayKey();
+    const hours = [];
+    for (let m = startMin; m < endMin; m += 60) hours.push(h("span", { style: "top:calc(" + (m - startMin) + " * var(--ppm))" }, hhmm(m)));
+    const cols = days.map((d, i) => {
+      const lay = layouts[i];
+      const col = h("div", { class: "col libre", "aria-label": "Agenda del " + fullDate(d), onclick: (e) => {
+        if (e.target !== col) return;
+        const y = e.offsetY / parseFloat(getComputedStyle(col).getPropertyValue("--ppm") || "1.2");
+        const m = Math.max(startMin, Math.min(endMin - 30, startMin + Math.floor(y / 30) * 30));
+        openSheet(() => apptForm({ date: d, time: hhmm(m) }));
+      } },
+        lay.items.map((it) => apptBlock(it.appt, it.top + lay.startMin - startMin, it.height, it.lane, it.lanes)));
+      if (d === today) {
+        const n = nowMin();
+        if (n >= startMin && n <= endMin) col.append(h("div", { class: "now", "data-start": String(startMin), style: "--t:" + (n - startMin) }));
+      }
+      return col;
+    });
+    return h("section", { class: "cal" + (week ? " semana" : ""), style: "--cols:" + days.length + ";--span:" + (endMin - startMin), "aria-label": week ? "Agenda de la semana" : "Agenda del día" },
+      week && h("div", { class: "cal-head" }, h("span", {}), days.map((d) => h("button", { class: d === today ? "hoy" : "", "aria-label": "Ver " + fullDate(d), onclick: () => { S.date = d; S.view = "dia"; render(); } },
+        h("span", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("span", { class: "num" }, Number(d.slice(8, 10)))))),
+      h("div", { class: "cal-body" }, h("div", { class: "hours" }, hours), cols));
+  }
+  function apptBlock(a, top, height, lane, lanes) {
     const c = clientOf(a.clientId);
     const color = a.serviceColor || (serviceOf(a.serviceId) || {}).color || TONES[0];
-    return h("button", { class: "swatch " + a.status, style: "--c:" + color, onclick: () => openSheet(() => apptDetail(a.id)) },
-      h("span", { class: "hora" }, timeOf(a)),
-      h("span", {}, h("div", { class: "quien" }, c ? c.name : "Clienta eliminada"), h("div", { class: "que" }, a.serviceName || "Servicio")),
-      h("span", { class: "estado" }, { pendiente: "Pendiente", cobrada: "Cobrada", cancelada: "Cancelada" }[a.status]));
+    const name = c ? c.name : "Clienta eliminada";
+    return h("button", { class: "appt " + a.status + (height <= 30 ? " corto" : "") + (lanes > 1 ? " angosto" : ""), style: "--c:" + color + ";--t:" + top + ";--h:" + height + ";--lane:" + lane + ";--lanes:" + lanes,
+      "aria-label": timeOf(a) + " a " + endOf(a) + ", " + name + ", " + (a.serviceName || "Servicio") + ", " + (STATUS[a.status] || a.status),
+      onclick: () => openSheet(() => apptDetail(a.id)) },
+      h("span", { class: "t" }, timeOf(a), h("span", { class: "fin" }, "–" + endOf(a))),
+      h("span", { class: "quien" }, name),
+      height >= 45 && h("span", { class: "que" }, a.serviceName || "Servicio"),
+      a.status !== "pendiente" && chip(a.status));
   }
-  function dayView(key) {
-    const list = apptsOn(key);
-    if (!list.length) return h("div", { class: "empty" }, h("p", {}, "No hay citas este día. Agenda la primera."), h("button", { class: "btn", onclick: () => openSheet(() => apptForm({ date: key })) }, "Nueva cita"));
-    return h("div", { class: "list" }, list.map(swatch));
+  // panel del día: cuánto hay, cuánto se cobró y quién sigue
+  function dayPanel(key) {
+    const list = apptsOn(key).filter((a) => a.status !== "cancelada");
+    const cobradas = list.filter((a) => a.status === "cobrada");
+    const pend = list.filter((a) => a.status === "pendiente");
+    const total = cobradas.reduce((n, a) => n + (a.total || 0), 0);
+    const isToday = key === todayKey(), n = nowMin();
+    const next = pend.filter((a) => !isToday || Number(a.start.slice(11, 13)) * 60 + Number(a.start.slice(14, 16)) + (Number(a.durationMin) || 30) > n).slice(0, 5);
+    return h("aside", { class: "panel", "aria-label": "Resumen del día" },
+      h("h2", {}, isToday ? "Hoy" : fullDate(key).replace(/^./, (x) => x.toUpperCase())),
+      h("div", { class: "kpis" },
+        h("div", { class: "kpi" }, h("b", {}, list.length), h("span", {}, list.length === 1 ? "cita" : "citas")),
+        h("div", { class: "kpi" }, h("b", {}, L.formatMXN(total).replace(/\.00$/, "")), h("span", {}, "cobrado")),
+        h("div", { class: "kpi" }, h("b", {}, pend.length), h("span", {}, "por cobrar"))),
+      h("div", { class: "next" }, h("h3", {}, isToday ? "Siguientes" : "Pendientes"),
+        next.length ? next.map((a) => { const c = clientOf(a.clientId); return h("button", { onclick: () => openSheet(() => apptDetail(a.id)) },
+          h("span", { class: "t" }, timeOf(a)), h("span", {}, h("div", {}, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName))); })
+          : h("p", { class: "muted small", style: "margin:4px 0 0" }, list.length ? "No quedan citas pendientes." : "Sin citas. Toca un horario libre para agendar.")));
   }
-  function weekView(start) {
-    const days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i));
-    return h("div", { class: "week" }, days.map((d) => h("button", { class: "weekday" + (d === todayKey() ? " hoy" : ""), style: "font:inherit", "aria-label": longDate(d) + ", " + apptsOn(d).filter((a) => a.status !== "cancelada").length + " citas", onclick: () => { S.date = d; S.view = "dia"; render(); } },
-      h("div", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("div", { class: "num" }, Number(d.slice(8, 10))),
-      apptsOn(d).filter((a) => a.status !== "cancelada").slice(0, 6).map((a) => h("span", { class: "dot", style: "--c:" + (a.serviceColor || TONES[0]) })))));
+  // renglón de cita para listas (por cobrar, historial)
+  function apptRow(a) {
+    const c = clientOf(a.clientId);
+    return h("button", { class: "item row-appt", style: "--c:" + (a.serviceColor || TONES[0]), onclick: () => openSheet(() => apptDetail(a.id)) },
+      h("span", { class: "t" }, dmy(a.start.slice(0, 10)).slice(0, 5), h("br"), timeOf(a)),
+      h("span", { class: "bar" }),
+      h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName || "Servicio")),
+      chip(a.status));
   }
 
   /* ---------- formulario de cita ---------- */
   function apptForm(init, existing) {
     if (init && init.clientId && !existing) init = { ...init };
-    const f = existing ? { ...existing, date: existing.start.slice(0, 10), time: existing.start.slice(11, 16) } : { date: init.date, time: "10:00", clientId: init.clientId || "", serviceId: "", notes: "", advance: "", durationMin: "" };
+    const f = existing ? { ...existing, date: existing.start.slice(0, 10), time: existing.start.slice(11, 16) } : { date: init.date, time: init.time || "10:00", clientId: init.clientId || "", serviceId: "", notes: "", advance: "", durationMin: "" };
     let warn = "";
     const clientSel = h("select", { id: "f-client" }, h("option", { value: "" }, "Elige una clienta"),
       S.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map((c) => h("option", { value: c.id, selected: c.id === f.clientId }, c.name)),
@@ -199,18 +302,24 @@
     if (!a) return h("div", {}, h("p", {}, "Esta cita ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
     const c = clientOf(a.clientId);
     const wa = c ? L.whatsappLink(c.phone, "Hola " + c.name.split(" ")[0] + ", te confirmo tu cita en Nails Up el " + dmy(a.start.slice(0, 10)) + " a las " + timeOf(a) + ".") : "";
-    return h("div", { class: "stack" },
-      h("h2", {}, c ? c.name : "Clienta eliminada"),
-      h("div", {}, h("div", {}, a.serviceName, " · ", longDate(a.start.slice(0, 10)), " ", timeOf(a), " · ", a.durationMin, " min"),
-        a.notes && h("div", { class: "muted" }, a.notes),
-        a.advance ? h("div", { class: "muted" }, "Anticipo recibido: " + L.formatMXN(a.advance)) : null,
-        a.status === "cobrada" && h("div", { class: "note ok", style: "margin-top:8px" }, "Cobrada: " + L.formatMXN(a.total) + " (" + a.method + ")")),
-      h("div", { class: "row" },
-        a.status === "pendiente" && h("button", { class: "btn", onclick: () => openSheet(() => chargeForm(a.id)) }, "Cobrar"),
-        a.status === "pendiente" && h("button", { class: "btn sec", onclick: () => openSheet(() => apptForm({}, a)) }, "Editar cita"),
-        wa && a.status === "pendiente" && h("a", { class: "btn sec", href: wa, target: "_blank", rel: "noopener", style: "text-decoration:none;display:inline-flex;align-items:center" }, "Confirmar por WhatsApp"),
-        a.status === "pendiente" && h("button", { class: "btn danger", onclick: () => openSheet(() => confirmCancel(a.id)) }, "Cancelar cita"),
-        h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+    const pend = a.status === "pendiente";
+    const fila = (k, v) => h("div", {}, h("dt", {}, k), h("dd", {}, v));
+    return h("div", { class: "stack detalle" },
+      h("div", { class: "row between" }, h("h2", {}, c ? c.name : "Clienta eliminada"), chip(a.status)),
+      h("dl", { class: "dl" },
+        fila("Servicio", h("span", {}, h("span", { class: "dotc", style: "background:" + (a.serviceColor || TONES[0]) }), a.serviceName || "Servicio")),
+        fila("Fecha", fullDate(a.start.slice(0, 10)).replace(/^./, (x) => x.toUpperCase())),
+        fila("Hora", timeOf(a) + " a " + endOf(a) + " (" + a.durationMin + " min)"),
+        a.status === "cobrada" ? fila("Cobrado", L.formatMXN(a.total) + " · " + a.method) : a.price ? fila("Precio", L.formatMXN(a.price)) : null,
+        a.advance ? fila("Anticipo", L.formatMXN(a.advance)) : null,
+        a.notes ? fila("Notas", a.notes) : null),
+      pend && h("button", { class: "btn", onclick: () => openSheet(() => chargeForm(a.id)) }, icon("cobros"), "Cobrar"),
+      pend && h("div", { class: "grid2" },
+        h("button", { class: "btn sec", onclick: () => openSheet(() => apptForm({}, a)) }, "Editar cita"),
+        wa ? h("a", { class: "btn sec", href: wa, target: "_blank", rel: "noopener" }, "Confirmar por WhatsApp") : h("span", {})),
+      h("div", { class: "row between" },
+        pend ? h("button", { class: "btn small ghost peligro", onclick: () => openSheet(() => confirmCancel(a.id)) }, "Cancelar cita") : h("span", {}),
+        h("button", { class: "btn small ghost", onclick: closeSheet }, "Cerrar")));
   }
   function confirmCancel(id) {
     const a = S.appts.find((x) => x.id === id);
@@ -222,16 +331,14 @@
 
   /* ---------- clientas y servicios ---------- */
   function screenClientas() {
-    const tab = S.clientTab;
-    return h("div", { class: "stack" },
-      h("div", { class: "row between" },
-        h("div", { class: "seg", role: "group", "aria-label": "Sección" },
-          h("button", { "aria-pressed": String(tab === "clientas"), onclick: () => { S.clientTab = "clientas"; render(); } }, "Clientas"),
-          h("button", { "aria-pressed": String(tab === "servicios"), onclick: () => { S.clientTab = "servicios"; render(); } }, "Servicios")),
-        tab === "clientas"
-          ? h("button", { class: "btn", onclick: () => openSheet(() => clientForm()) }, "Nueva clienta")
-          : h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio")),
-      tab === "clientas" ? clientList() : serviceList());
+    return h("div", {},
+      pageHead("Clientas", h("button", { class: "btn", onclick: () => openSheet(() => clientForm()) }, icon("mas"), "Nueva clienta")),
+      clientList());
+  }
+  function screenServicios() {
+    return h("div", {},
+      pageHead("Servicios y precios", h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, icon("mas"), "Nuevo servicio")),
+      serviceList());
   }
   function clientList() {
     const q = S.clientQuery.trim().toLowerCase();
@@ -239,10 +346,10 @@
     const list = S.clients.filter((c) => !q || c.name.toLowerCase().includes(q) || (qd && L.normalizePhone(c.phone) === qd) || String(c.phone || "").includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
     return h("div", { class: "stack" },
-      h("input", { type: "search", placeholder: "Buscar por nombre o teléfono", "aria-label": "Buscar clienta", "data-keep": "q", value: S.clientQuery, oninput: (e) => { S.clientQuery = e.target.value; render(); } }),
-      list.length ? h("div", { class: "list" }, list.map((c) => h("button", { class: "item", onclick: () => openSheet(() => clientCard(c.id)) },
-        h("span", {}, h("div", { class: "name" }, c.name), h("div", { class: "muted small" }, c.phone || "Sin teléfono")),
-        h("span", { class: "tag" }, L.paidVisitCount(c.id, S.appts) + " visitas"))))
+      h("div", { class: "search" }, icon("buscar"), h("input", { type: "search", placeholder: "Buscar por nombre o teléfono", "aria-label": "Buscar clienta", "data-keep": "q", value: S.clientQuery, oninput: (e) => { S.clientQuery = e.target.value; render(); } })),
+      list.length ? h("div", { class: "list" }, list.map((c) => { const v = L.paidVisitCount(c.id, S.appts); return h("button", { class: "item", onclick: () => openSheet(() => clientCard(c.id)) },
+        h("span", { class: "who" }, h("span", { class: "avatar", "aria-hidden": "true" }, initials(c.name)), h("span", {}, h("div", { class: "name" }, c.name), h("div", { class: "muted small" }, c.phone || "Sin teléfono"))),
+        h("span", { class: "muted small" }, v === 1 ? "1 visita" : v + " visitas")); }))
         : h("div", { class: "empty" }, h("p", {}, S.clients.length ? "No hay clientas con esa búsqueda." : "Aún no hay clientas. Agrega la primera."), !S.clients.length && h("button", { class: "btn", onclick: () => openSheet(() => clientForm()) }, "Nueva clienta")));
   }
   function clientCard(id) {
@@ -298,7 +405,7 @@
     if (!S.services.length) return h("div", { class: "empty" }, h("p", {}, "Aún no hay servicios. Agrega el primero."), h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio"));
     return h("div", { class: "list" }, S.services.slice().sort((a, b) => a.name.localeCompare(b.name)).map((v) => h("button", { class: "item", onclick: () => openSheet(() => serviceForm(v.id)) },
       h("span", {}, h("div", { class: "name" }, h("span", { class: "dotc", style: "background:" + (v.color || TONES[0]) }), v.name), h("div", { class: "muted small" }, v.durationMin + " min")),
-      h("span", {}, v.active === false && h("span", { class: "tag" }, "Inactivo "), v.price ? L.formatMXN(v.price) : h("span", { class: "muted small" }, "Sin precio")))));
+      h("span", { class: "side-r" }, v.active === false && h("span", { class: "tag" }, "Inactivo"), v.price ? h("span", { class: "name" }, L.formatMXN(v.price)) : h("span", { class: "muted small" }, "Sin precio")))));
   }
   function serviceForm(id) {
     const v = id ? serviceOf(id) : { name: "", price: "", durationMin: 45, color: TONES[S.services.length % TONES.length], active: true };
@@ -318,7 +425,7 @@
       h("label", {}, "Nombre", h("input", { id: "s-name", autocomplete: "off", value: v.name })),
       h("div", { class: "grid2" }, h("label", {}, "Precio", h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, "Duración (min)", h("input", { id: "s-dur", type: "number", min: "5", step: "5", value: v.durationMin }))),
       h("div", {}, h("div", { class: "small", style: "font-weight:600;margin-bottom:6px" }, "Color en la agenda"), palette),
-      h("label", { class: "row", style: "display:flex;gap:10px" }, h("input", { id: "s-active", type: "checkbox", style: "width:22px;min-height:22px", checked: active }), "Disponible para nuevas citas"),
+      h("label", { class: "check" }, h("input", { id: "s-active", type: "checkbox", checked: active }), "Disponible para nuevas citas"),
       msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar servicio"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
 
@@ -371,10 +478,10 @@
     const now = todayKey();
     const pend = S.appts.filter((a) => a.status === "pendiente" && a.start.slice(0, 10) <= now).sort(byStart);
     const done = S.appts.filter((a) => a.status === "cobrada").sort((a, b) => byStart(b, a)).slice(0, 20);
-    return h("div", { class: "stack" }, h("h1", {}, "Cobros"),
-      h("h3", {}, "Por cobrar"),
-      pend.length ? h("div", { class: "list" }, pend.map(swatch)) : h("div", { class: "empty" }, h("p", {}, "No hay citas por cobrar. Las citas de hoy y de días pasados aparecen aquí.")),
-      h("h3", {}, "Cobros recientes"),
+    return h("div", {}, pageHead("Cobros"),
+      h("h2", { class: "section-title" }, "Por cobrar"),
+      pend.length ? h("div", { class: "list" }, pend.map(apptRow)) : h("div", { class: "empty" }, h("p", {}, "No hay citas por cobrar. Las citas de hoy y de días pasados aparecen aquí.")),
+      h("h2", { class: "section-title" }, "Cobros recientes"),
       done.length ? h("div", { class: "list" }, done.map((a) => { const c = clientOf(a.clientId); return h("button", { class: "item", onclick: () => openSheet(() => apptDetail(a.id)) },
         h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName + " · " + dmy(a.paidAt || a.start.slice(0, 10)) + " · " + a.method + (a.discountAmount ? " · descuento " + L.formatMXN(a.discountAmount) : ""))),
         h("span", { class: "name" }, L.formatMXN(a.total))); }))
@@ -388,12 +495,12 @@
   }
   function screenPromos() {
     const tab = S.promoTab || "promos";
-    return h("div", { class: "stack" },
-      h("div", { class: "row between" },
+    return h("div", {},
+      pageHead("Promociones",
         h("div", { class: "seg", role: "group", "aria-label": "Sección" },
-          h("button", { "aria-pressed": String(tab === "promos"), onclick: () => { S.promoTab = "promos"; render(); } }, "Promociones"),
+          h("button", { "aria-pressed": String(tab === "promos"), onclick: () => { S.promoTab = "promos"; render(); } }, "Descuentos"),
           h("button", { "aria-pressed": String(tab === "captacion"), onclick: () => { S.promoTab = "captacion"; render(); } }, "Captación")),
-        tab === "promos" && h("button", { class: "btn", onclick: () => openSheet(() => promoForm()) }, "Nueva promoción")),
+        tab === "promos" && h("button", { class: "btn", onclick: () => openSheet(() => promoForm()) }, icon("mas"), "Nueva promoción")),
       tab === "promos" ? promoList() : outreach());
   }
   function saveSettings(patch, okMsg) { return run(Store.save("settings", { ...settings(), ...patch, id: "main" }), okMsg); }
@@ -406,7 +513,7 @@
       h("div", {}, h("button", { class: "btn sec", onclick: () => saveSettings({ loyaltyEvery: Math.max(0, Math.floor(Number(root.querySelector("#l-every").value) || 0)), loyaltyPercent: Math.min(100, Math.max(0, Number(root.querySelector("#l-pct").value) || 0)) }, "Lealtad guardada") }, "Guardar lealtad")));
     const rows = S.promos.slice().sort((a, b) => a.name.localeCompare(b.name));
     return h("div", { class: "stack" }, loy,
-      rows.length ? h("div", { class: "list" }, rows.map((p) => h("div", { class: "card stack" },
+      rows.length ? h("div", { class: "stack" }, rows.map((p) => h("div", { class: "card stack" },
         h("div", { class: "row between" }, h("div", {}, h("div", { class: "name", style: "font-weight:650" }, p.name), h("div", { class: "muted small" }, p.percent + "% · " + (p.type === "cumpleanos" ? "mes de cumpleaños" : dmy(p.startDate) + " al " + dmy(p.endDate)))),
           h("span", { class: "tag" }, promoActiveToday(p) ? "Activa hoy" : p.active ? "Programada" : "Apagada")),
         h("div", { class: "row" },
@@ -434,7 +541,7 @@
       h("label", {}, "Nombre", h("input", { id: "pr-name", autocomplete: "off", value: p.name })),
       h("div", { class: "grid2" }, h("label", {}, "Tipo", tipo), h("label", {}, "Descuento (%)", h("input", { id: "pr-pct", type: "number", min: "1", max: "100", value: p.percent }))),
       fechas,
-      h("label", { class: "row", style: "display:flex;gap:10px" }, h("input", { id: "pr-act", type: "checkbox", style: "width:22px;min-height:22px", checked: p.active !== false }), "Promoción activa"),
+      h("label", { class: "check" }, h("input", { id: "pr-act", type: "checkbox", checked: p.active !== false }), "Promoción activa"),
       msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar promoción"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function outreach() {
@@ -458,12 +565,12 @@
     const sum = (arr) => arr.reduce((n, a) => n + (a.total || 0), 0);
     const pendientes = apptsOn(t).filter((a) => a.status === "pendiente").length;
     const activas = S.promos.filter(promoActiveToday);
-    return h("div", { class: "stack" }, h("h1", {}, "Resumen"),
+    return h("div", { class: "stack" }, pageHead("Resumen"),
       h("div", { class: "stats" },
         h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos de hoy"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a) === t))))),
         h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos del mes"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a).startsWith(month)))))),
         h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Citas pendientes hoy"), h("span", { class: "big" }, pendientes))),
-      h("h3", {}, "Promociones activas hoy"),
+      h("h2", { class: "section-title" }, "Promociones activas hoy"),
       activas.length ? h("div", { class: "list" }, activas.map((p) => h("div", { class: "item", style: "cursor:default" }, h("span", { class: "name" }, p.name), h("span", { class: "tag" }, p.percent + "%"))))
         : h("p", { class: "muted" }, "No hay promociones activas hoy."));
   }
