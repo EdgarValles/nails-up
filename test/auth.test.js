@@ -195,8 +195,36 @@ test("si la base falla en el login: 500 sin cookie", async () => {
     assert.equal(r.status, 500);
     assert.equal((await r.json()).error, "No se pudo iniciar sesión. Intenta de nuevo.");
     assert.equal(r.headers.get("set-cookie"), null);
+    const u = await s.db.collection("users").findOne({ _id: "owner" });
+    assert.equal(u.failedCount, 0);
+    assert.equal(u.lockCount, 0);
     await s.close();
   }
+});
+
+test("10 contraseñas malas en paralelo: un solo bloqueo y la correcta recibe 429", async () => {
+  const s = await start();
+  const rs = await Promise.all(Array.from({ length: 10 }, () => login(s, "contraseña-mala!")));
+  const codes = rs.map((r) => r.status).sort();
+  assert.deepEqual(codes, [401, 401, 401, 401, 401, 429, 429, 429, 429, 429]);
+  const r = await login(s, GOOD);
+  assert.equal(r.status, 429);
+  assert.match((await r.json()).error, /Intenta en 15 minutos/);
+  assert.equal(r.headers.get("set-cookie"), null);
+  const u = await s.authStore.getUser();
+  assert.equal(u.lockCount, 1);
+  assert.equal(u.failedCount, 0);
+  await s.close();
+});
+
+test("un error en la base no traba la fila de logins", async () => {
+  let fail = true;
+  const s = await start();
+  const real = s.authStore.getUser;
+  s.authStore.getUser = async () => { if (fail) { fail = false; throw new Error("x"); } return real(); };
+  assert.equal((await login(s, GOOD)).status, 500);
+  assert.equal((await login(s, GOOD)).status, 204);
+  await s.close();
 });
 
 test("si la base falla al revisar la sesión: 500 y no se pasa a la ruta", async () => {

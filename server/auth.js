@@ -61,6 +61,13 @@ function readToken(req) {
 
 function createAuth({ authStore, now = Date.now, secure = false, log = defaultLog } = {}) {
   const limiter = createRateLimiter({ now });
+  // Fila de logins: cada intento espera al anterior; un error no la traba
+  let queue = Promise.resolve();
+  const serialized = (fn) => {
+    const run = queue.then(fn);
+    queue = run.catch(() => {});
+    return run;
+  };
   const attrs = "; HttpOnly; SameSite=Strict; Path=/" + (secure ? "; Secure" : "");
   const setCookie = (res, token) => res.append("Set-Cookie", `${COOKIE}=${token}${attrs}; Max-Age=${MAX_AGE}`);
   const clearCookie = (res) => res.append("Set-Cookie", `${COOKIE}=${attrs}; Max-Age=0`);
@@ -113,32 +120,35 @@ function createAuth({ authStore, now = Date.now, secure = false, log = defaultLo
     if (typeof password !== "string" || !password || password.length > MAX_PASSWORD) {
       return res.status(400).json({ error: MSG.empty });
     }
+    let outcome;
     try {
-      const user = await authStore.getUser();
-      if (!user) {
-        emit(req, "login_fail");
-        return res.status(401).json({ error: MSG.wrong });
-      }
-      const wait = lockedFor(user);
-      if (wait > 0) {
-        emit(req, "login_locked");
-        return res.status(429).json({ error: lockedMsg(wait) });
-      }
-      if (!(await verifyPassword(password, user.passwordHash))) {
-        // El fallo que activa el bloqueo sigue siendo 401; el 429 llega en el siguiente intento
-        await authStore.recordFailure();
-        emit(req, "login_fail");
-        return res.status(401).json({ error: MSG.wrong });
-      }
-      await authStore.resetFailures();
-      const token = await authStore.createSession();
-      setCookie(res, token);
-      emit(req, "login_ok");
-      res.status(204).end();
+      outcome = await serialized(() => attempt(password));
     } catch {
-      res.status(500).json({ error: MSG.loginError });
+      return res.status(500).json({ error: MSG.loginError });
     }
+    emit(req, outcome.event);
+    if (outcome.token) {
+      setCookie(res, outcome.token);
+      return res.status(204).end();
+    }
+    res.status(outcome.status).json({ error: outcome.error });
   });
+
+  // Un solo intento a la vez: leer, revisar el bloqueo, verificar y anotar el resultado
+  // ocurren juntos, para que intentos en paralelo no se salten el bloqueo
+  async function attempt(password) {
+    const user = await authStore.getUser();
+    if (!user) return { event: "login_fail", status: 401, error: MSG.wrong };
+    const wait = lockedFor(user);
+    if (wait > 0) return { event: "login_locked", status: 429, error: lockedMsg(wait) };
+    if (!(await verifyPassword(password, user.passwordHash))) {
+      // El fallo que activa el bloqueo sigue siendo 401; el 429 llega en el siguiente intento
+      await authStore.recordFailure();
+      return { event: "login_fail", status: 401, error: MSG.wrong };
+    }
+    await authStore.resetFailures();
+    return { event: "login_ok", token: await authStore.createSession() };
+  }
 
   router.post("/logout", noStore, async (req, res) => {
     clearCookie(res);
