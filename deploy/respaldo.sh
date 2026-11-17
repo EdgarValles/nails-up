@@ -14,12 +14,15 @@ mkdir -p "$DIR"
 # La URI (con la contraseña) va en un archivo temporal 600, no en la línea de
 # comandos, para que no aparezca en "ps". Se borra al terminar.
 CONF=$(mktemp)
-trap 'rm -f "$CONF"' EXIT
+OUT="$DIR/nailsup-$(date +%F).gz"
+TMP="$OUT.tmp"
+trap 'rm -f "$CONF" "$TMP"' EXIT
 printf 'uri: "%s"\n' "$MONGODB_URI" > "$CONF"
 
 mongodump --config "$CONF" --db "$MONGODB_DB" --gzip \
-  --archive="$DIR/nailsup-$(date +%F).gz" --quiet
+  --archive="$TMP" --quiet
+mv -f "$TMP" "$OUT"
 
 # Conserva solo los 14 más nuevos.
-ls -1t "$DIR"/nailsup-*.gz | tail -n +15 | xargs -r rm -f --
+ls -1t "$DIR"/nailsup-*.gz 2>/dev/null | tail -n +15 | xargs -r rm -f --
 echo "Respaldo listo en $DIR"

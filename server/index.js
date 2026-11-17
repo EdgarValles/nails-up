@@ -25,6 +25,15 @@ async function start({ db, env = {}, csp }) {
   });
 }
 
+function loadCsp(dir = path.join(__dirname, "..", "dist")) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, "csp.json"), "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") throw new Error("Falta la página construida. Corre npm run build y vuelve a intentar.");
+    throw e;
+  }
+}
+
 async function main() {
   const { MongoClient } = require("mongodb");
   const uri = process.env.MONGODB_URI || "mongodb://localhost:27017";
@@ -37,7 +46,7 @@ async function main() {
     } catch {
       throw new Error("No se pudo conectar a MongoDB en " + redactUri(uri) + ". Revisa que esté encendido.");
     }
-    const csp = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "dist", "csp.json"), "utf8"));
+    const csp = loadCsp();
     await start({ db: client.db(dbName), env: process.env, csp });
   } catch (e) {
     console.error(e.message);
@@ -48,4 +57,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { start };
+module.exports = { start, loadCsp };

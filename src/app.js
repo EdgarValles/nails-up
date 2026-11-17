@@ -487,7 +487,7 @@
     let db = null;
     if (location.hash === "#demo") { db = demoDb(); window.__demoDb = db; }
     else { try { db = typeof claude !== "undefined" ? await claude.use("db") : null; } catch (_) { db = null; } }
-    if (!db && (location.protocol === "http:" || location.protocol === "https:")) {
+    if (!db && typeof claude === "undefined" && (location.protocol === "http:" || location.protocol === "https:")) {
       // modo servidor: el servidor de este proyecto guarda los datos en MongoDB
       db = createApiDb("");
       S.server = true;

@@ -76,8 +76,9 @@ sudo -u nailsup bash -c 'cd /opt/nails-up && npm ci --omit=dev && npm run build'
 ```
 (Si el repositorio es privado, `git clone` necesita una llave de despliegue o un token; configúralo para el usuario `nailsup`.)
 
-Crea el archivo de variables, que guarda la contraseña de Atlas:
+Crea el archivo de variables, que guarda la contraseña de Atlas. Primero se crea vacío con permisos 600, para que la contraseña nunca sea legible por otros:
 ```
+sudo -u nailsup install -m 600 /dev/null /opt/nails-up/.env
 sudo -u nailsup nano /opt/nails-up/.env
 ```
 ```
@@ -85,9 +86,6 @@ MONGODB_URI="mongodb+srv://TU_USUARIO_ATLAS:LA_CONTRASEÑA@cluster0.xxxxx.mongod
 MONGODB_DB=nailsup
 PORT=3000
 PUBLIC_ORIGIN=https://portal.tudominio.com
-```
-```
-sudo chmod 600 /opt/nails-up/.env
 ```
 La URI **va entre comillas dobles**, completa y con todo lo que Atlas pone después del `?` (por ejemplo `?retryWrites=true&w=majority`): sin comillas, el `&` rompe el respaldo.
 Crea la usuaria del portal (pide una contraseña de 12 caracteres o más):
@@ -116,7 +114,7 @@ Cuando haya cambios nuevos, ejecuta con tu usuario `admin` (necesita `sudo`, que
 ```
 
 ## 8. Respaldos y restauración
-Atlas M0 no hace respaldos automáticos. El timer guarda una copia cada día a las 3:00 en `/var/backups/nailsup` y conserva las últimas 14. Pruébalo ahora:
+Atlas M0 no hace respaldos automáticos. El timer guarda una copia cada día a las 03:00 (hora del reloj del servidor, normalmente UTC; revisa o cambia con `timedatectl`) en `/var/backups/nailsup` y conserva las últimas 14. Pruébalo ahora:
 ```
 sudo systemctl start nails-up-respaldo.service
 sudo ls -l /var/backups/nailsup
@@ -141,5 +139,6 @@ Marca cada punto después de instalar:
 - [ ] Desde **tu computadora** (no el VPS), `curl --max-time 5 http://TU_IP:3000` falla.
 - [ ] Atlas rechaza otra IP: desde otra red, la URI no conecta.
 - [ ] Entrar con la contraseña funciona, y sin ella te manda a `/login`.
+- [ ] Los respaldos corren: `systemctl list-timers nails-up-respaldo.timer` muestra la próxima ejecución; después de la primera noche, `journalctl -u nails-up-respaldo -n 20` no muestra errores y `sudo ls -l /var/backups/nailsup` tiene un archivo del día.
 - [ ] Una restauración de prueba funciona (sección 8).
 - [ ] `sudo ufw status` muestra solo 22, 80 y 443; `sudo fail2ban-client status sshd` responde.

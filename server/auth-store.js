@@ -77,7 +77,7 @@ function createAuthStore(db, { now = Date.now } = {}) {
       await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0, lockCount: 0 } });
     },
     async unlock() {
-      await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0, lockedUntil: null } });
+      await users().updateOne({ _id: OWNER }, { $set: { failedCount: 0, lockCount: 0, lockedUntil: null } });
     },
     async createSession() {
       const token = crypto.randomBytes(32).toString("base64url");

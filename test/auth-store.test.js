@@ -133,6 +133,7 @@ test("recordFailure, resetFailures y unlock", async () => {
   u = await store.getUser();
   assert.equal(u.lockedUntil, null);
   assert.equal(u.failedCount, 0);
+  assert.equal(u.lockCount, 0);
   await store.recordFailure();
   assert.equal((await store.getUser()).failedCount, 1);
   await store.resetFailures();

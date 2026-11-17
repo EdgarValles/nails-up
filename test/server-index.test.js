@@ -23,3 +23,9 @@ test("start con usuaria escucha solo en 127.0.0.1", async () => {
     await new Promise((r) => server.close(r));
   }
 });
+
+test("loadCsp sin csp.json explica que falta construir", () => {
+  const os = require("node:os");
+  const { loadCsp } = require("../server/index");
+  assert.throws(() => loadCsp(os.tmpdir() + "/no-existe-nails-up"), { message: "Falta la página construida. Corre npm run build y vuelve a intentar." });
+});

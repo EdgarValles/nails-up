@@ -66,11 +66,12 @@ test("cerrar-sesiones cuenta las sesiones", async () => {
 test("desbloquear limpia el bloqueo", async () => {
   const { io, out, authStore, db } = setup();
   await authStore.createUser("h");
-  await db.collection("users").updateOne({ _id: "owner" }, { $set: { failedCount: 5, lockedUntil: new Date() } });
+  await db.collection("users").updateOne({ _id: "owner" }, { $set: { failedCount: 5, lockCount: 2, lockedUntil: new Date() } });
   await runCommand("desbloquear", io);
   const u = await authStore.getUser();
   assert.equal(u.lockedUntil, null);
   assert.equal(u.failedCount, 0);
+  assert.equal(u.lockCount, 0);
   assert.deepEqual(out, ["Cuenta desbloqueada."]);
 });
 

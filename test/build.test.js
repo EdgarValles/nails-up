@@ -49,3 +49,8 @@ test("app.js no usa setAttribute style (CSP)", () => {
   const app = fs.readFileSync(path.join(root, "src/app.js"), "utf8");
   assert.ok(!app.includes('setAttribute("style"'));
 });
+
+test("app.js entra en modo servidor solo si no existe claude", () => {
+  const src = fs.readFileSync(path.join(root, "src/app.js"), "utf8");
+  assert.match(src, /typeof claude === "undefined" && \(location\.protocol === "http:" \|\| location\.protocol === "https:"\)/);
+});
