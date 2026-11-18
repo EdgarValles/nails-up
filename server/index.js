@@ -1,21 +1,29 @@
-// Arranque del portal: MongoDB + servidor en 127.0.0.1
+// Arranque del portal: MongoDB + servidor en 127.0.0.1 (o en HOST, por ejemplo 0.0.0.0 en Render)
 const fs = require("node:fs");
 const path = require("node:path");
 const { createApp } = require("./app.js");
 const { createAuthStore } = require("./auth-store.js");
 const { createMongoStore, redactUri } = require("./mongo-store.js");
 
+// Vacío: confía solo en un proxy local. Un número: saltos de proxy (nunca "true", que acepta IPs inventadas)
+function parseTrustProxy(v) {
+  if (v === undefined || v === "") return "loopback";
+  if (!/^[0-9]+$/.test(v)) throw new Error("TRUST_PROXY debe ser un número de saltos (por ejemplo 1) o quedar vacío.");
+  return Number(v);
+}
+
 async function start({ db, env = {}, csp }) {
+  const trustProxy = parseTrustProxy(env.TRUST_PROXY);
   const authStore = createAuthStore(db);
   await authStore.ensureIndexes();
   if (!(await authStore.getUser())) {
     throw new Error("Crea la usuaria con: node server/cli.js crear-usuaria");
   }
   const publicOrigin = env.PUBLIC_ORIGIN || "";
-  const app = createApp(createMongoStore(db), { authStore, publicOrigin, csp });
+  const app = createApp(createMongoStore(db), { authStore, publicOrigin, csp, trustProxy });
   const port = env.PORT !== undefined && env.PORT !== "" ? Number(env.PORT) : 3000;
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, "127.0.0.1");
+    const server = app.listen(port, env.HOST || "127.0.0.1");
     server.once("error", reject);
     server.once("listening", () => {
       server.off("error", reject);
@@ -57,4 +65,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { start, loadCsp };
+module.exports = { start, loadCsp, parseTrustProxy };

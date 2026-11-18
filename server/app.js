@@ -1,4 +1,4 @@
-// Portal de Nails Up: páginas y API detrás de una sesión, en localhost o detrás de Caddy
+// Portal de Nails Up: páginas y API detrás de una sesión, en localhost o detrás de un proxy (Caddy o Render)
 const express = require("express");
 const path = require("node:path");
 const { createAuth } = require("./auth.js");
@@ -10,7 +10,7 @@ const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const DIST = path.join(__dirname, "..", "dist");
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 
-function createApp(store, { authStore, publicOrigin = "", csp, now = Date.now, log } = {}) {
+function createApp(store, { authStore, publicOrigin = "", csp, now = Date.now, log, trustProxy = "loopback" } = {}) {
   if (!authStore) throw new Error("Falta authStore.");
   if (!csp || !csp["index.html"] || !csp["login.html"]) throw new Error("Falta csp.json; corre npm run build.");
   const https = publicOrigin.startsWith("https:");
@@ -20,7 +20,8 @@ function createApp(store, { authStore, publicOrigin = "", csp, now = Date.now, l
 
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", "loopback");
+  // loopback: Caddy en la misma máquina. Un número: cuántos proxies agregan IP al final de X-Forwarded-For
+  app.set("trust proxy", trustProxy);
 
   // Primero: toda respuesta, incluso 403, 404 y errores, lleva los encabezados de seguridad
   app.use(securityHeaders({ https }));

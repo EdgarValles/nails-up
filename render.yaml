@@ -1,0 +1,23 @@
+# Render lee este archivo al crear el servicio (New > Blueprint). Guía: deploy/render.md
+services:
+  - type: web
+    name: nails-up
+    runtime: node
+    plan: free # cambia a starter para que no se duerma
+    buildCommand: npm ci --omit=dev && npm run build
+    startCommand: node server/index.js
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: MONGODB_DB
+        value: nailsup
+      # Estos dos los escribes tú en Render; no se guardan en el repositorio
+      - key: MONGODB_URI
+        sync: false
+      - key: PUBLIC_ORIGIN
+        sync: false

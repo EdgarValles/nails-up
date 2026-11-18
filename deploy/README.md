@@ -1,5 +1,7 @@
 # Publicar Nails Up en un VPS
 
+¿Prefieres no administrar un servidor? La guía [`render.md`](render.md) publica el portal en Render, todo desde Windows.
+
 Guía paso a paso para Ubuntu 24.04: el portal corre en el servidor detrás de Caddy (que pone el candado https) y guarda los datos en MongoDB Atlas.
 Cambia `portal.tudominio.com`, `TU_IP`, `admin` y `TU_USUARIO_ATLAS` por tus valores reales.
 

@@ -276,3 +276,29 @@ test("with a public origin, localhost keeps working and a foreign origin is reje
   assert.strictEqual(r.status, 403);
   await s.close();
 });
+
+// En Render el proxy agrega la IP real al final de X-Forwarded-For; lo anterior lo pudo escribir quien sea
+async function ipRegistrada(trustProxy) {
+  const authStore = createAuthStore(fakeMongo());
+  await authStore.createUser(HASH);
+  const events = [];
+  const app = createApp(memoryStore(), { authStore, csp: CSP, log: (e) => events.push(e), ...(trustProxy !== undefined ? { trustProxy } : {}) });
+  const server = await new Promise((r) => { const s = app.listen(0, "127.0.0.1", () => r(s)); });
+  const port = server.address().port;
+  try {
+    await raw(port, {
+      method: "POST", path: "/api/auth/login",
+      headers: { ...J, Host: "127.0.0.1:" + port, Origin: "http://127.0.0.1:" + port, "X-Forwarded-For": "6.6.6.6, 203.0.113.9" },
+      body: JSON.stringify({ password: "otra-contraseña-mala" }),
+    });
+  } finally {
+    await new Promise((r) => { server.close(r); server.closeAllConnections(); });
+  }
+  return events[0].ip;
+}
+test("trustProxy 1 toma solo la IP que agregó el proxy, no la que inventa el cliente", async () => {
+  assert.strictEqual(await ipRegistrada(1), "203.0.113.9");
+});
+test("trustProxy 0 ignora X-Forwarded-For", async () => {
+  assert.strictEqual(await ipRegistrada(0), "127.0.0.1");
+});

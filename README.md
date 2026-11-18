@@ -31,9 +31,12 @@ El servidor escucha solo en tu computadora (`127.0.0.1`) y rechaza peticiones de
 - `MONGODB_URI`: por defecto `mongodb://localhost:27017`
 - `MONGODB_DB`: por defecto `nailsup`
 - `PORT`: por defecto `3000`
+- `PUBLIC_ORIGIN`, `HOST` y `TRUST_PROXY`: solo para publicarlo; vacíos en tu computadora (ver las guías de publicación)
 
 ## Publicarlo en internet
-El portal ya tiene inicio de sesión con contraseña, así que puede publicarse en un servidor. La guía completa (servidor, dominio, MongoDB Atlas y respaldos) está en [`deploy/README.md`](deploy/README.md).
+El portal ya tiene inicio de sesión con contraseña, así que puede publicarse. Hay dos guías:
+- **Render + MongoDB Atlas, todo desde Windows (recomendada):** [`deploy/render.md`](deploy/render.md).
+- **Servidor propio (VPS) con Ubuntu:** [`deploy/README.md`](deploy/README.md).
 
 **Aviso:** la contraseña también se pide en tu computadora. Antes del primer `npm start`, crea tu usuaria una vez:
 ```
