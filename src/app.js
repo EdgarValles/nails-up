@@ -400,7 +400,7 @@
     };
     clientSel.addEventListener("change", pintaTendencia);
     pintaTendencia();
-    const lines0 = existing ? L.apptServices(existing) : [];
+    const lines0 = existing ? L.apptServices(existing) : (init && init.lines) || [];
     const dur = h("input", { id: "f-dur", type: "number", min: "5", step: "5", value: f.durationMin });
     // la duración es la suma de los servicios hasta que la cambias a mano
     let durManual = !!existing && Number(existing.durationMin) !== L.servicesTotals(lines0).durationMin;
@@ -465,7 +465,7 @@
     return h("div", { class: "stack" }, h("h2", {}, existing ? "Editar cita" : "Nueva cita"),
       h("label", {}, "Clienta", clientSel), tendBox, newBox,
       h("div", { class: "stack campo" }, h("span", { class: "lbl" }, "Servicios"), editor.el, estimado),
-      h("div", { class: "grid2" }, h("label", {}, "Fecha", h("input", { id: "f-date", type: "date", value: f.date })), h("label", {}, "Hora", h("input", { id: "f-time", type: "time", value: f.time }))),
+      h("div", { class: "grid2" }, h("label", {}, "Fecha", h("input", { id: "f-date", type: "date", value: f.date }), !existing && init && init.hint && h("span", { class: "muted small", style: "font-weight:400" }, init.hint)), h("label", {}, "Hora", h("input", { id: "f-time", type: "time", value: f.time }))),
       h("div", { class: "grid2" }, h("label", {}, "Duración (min)", dur), h("label", {}, "Anticipo recibido", h("input", { id: "f-adv", type: "number", min: "0", inputmode: "decimal", value: f.advance || "" }))),
       h("label", {}, "Notas del diseño", h("textarea", { id: "f-notes" }, f.notes || "")),
       msg,
@@ -489,7 +489,7 @@
         fila("Fecha", fullDate(a.start.slice(0, 10)).replace(/^./, (x) => x.toUpperCase())),
         fila("Hora", timeOf(a) + " a " + endOf(a) + " (" + a.durationMin + " min)"),
         a.status === "cobrada" ? fila("Cobrado", L.formatMXN(a.total) + " · " + a.method) : null,
-        a.advance ? fila("Anticipo", L.formatMXN(a.advance)) : null,
+        a.advance ? fila(a.advanceKept === true ? "Anticipo retenido" : a.advanceKept === false ? "Anticipo devuelto" : "Anticipo", L.formatMXN(a.advance)) : null,
         a.notes ? fila("Notas", a.notes) : null,
         L.cancelKind(a) ? fila("Cancelación", L.cancelKind(a) === "no_llego" ? "No llegó" : "Canceló con aviso") : null,
         L.cancelKind(a) && a.cancelReason ? fila("Motivo", a.cancelReason) : null),
@@ -521,18 +521,26 @@
     const msg = h("div", { "aria-live": "polite" });
     const opcion = (value, text) => h("label", { class: "check" }, h("input", { type: "radio", name: "cancel-kind", value }), text);
     const motivo = h("textarea", { id: "cancel-reason" });
+    const a0 = S.appts.find((x) => x.id === id);
+    const anticipo = a0 && Number(a0.advance) > 0 ? Number(a0.advance) : 0;
+    const opcionAnt = (value, text) => h("label", { class: "check" }, h("input", { type: "radio", name: "advance-kept", value }), text);
     async function cancelar() {
       msg.replaceChildren();
       const sel = root.querySelector('input[name="cancel-kind"]:checked');
       if (!sel) return msg.append(h("div", { class: "note" }, "Elige qué pasó: si avisó o si no llegó."));
+      const ant = root.querySelector('input[name="advance-kept"]:checked');
+      if (anticipo && !ant) return msg.append(h("div", { class: "note" }, "Elige qué pasó con el anticipo."));
       const fresh = S.appts.find((x) => x.id === id);
       if (!fresh || fresh.status !== "pendiente") return msg.append(h("div", { class: "note" }, "Esta cita ya fue cobrada o cancelada."));
       const doc = { ...fresh, status: "cancelada", cancelKind: sel.value, cancelReason: motivo.value.trim(), cancelledAt: todayKey() };
+      if (Number(fresh.advance) > 0 && ant) doc.advanceKept = ant.value === "si";
       if (await run(Store.save("appointments", doc), "Cita cancelada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, "¿Cancelar esta cita?"), h("p", { class: "muted" }, "La cita queda en el historial como cancelada y no cuenta como visita."),
       h("fieldset", { class: "stack opciones" }, h("legend", {}, "¿Qué pasó?"), opcion("aviso", "Avisó que no viene"), opcion("no_llego", "No llegó")),
       h("label", {}, "Motivo (opcional)", motivo),
+      anticipo > 0 && h("fieldset", { class: "stack opciones" }, h("legend", {}, "¿Qué pasó con el anticipo de " + L.formatMXN(anticipo) + "?"),
+        opcionAnt("si", "Me lo quedo"), opcionAnt("no", "Lo devolví")),
       msg, h("div", { class: "row" },
         busyBtn({ class: "btn danger" }, "Sí, cancelar cita", cancelar),
         h("button", { class: "btn ghost", onclick: () => openSheet(() => apptDetail(id)) }, "Volver")));
@@ -613,7 +621,8 @@
       h("h3", {}, "Historial"),
       hist.length ? h("div", { class: "list" }, hist.map((a) => h("div", { class: "item", style: "cursor:default" },
         h("span", {}, h("div", { class: "name" }, resumen(a)), h("div", { class: "muted small" }, dmy(a.start.slice(0, 10)) + " " + timeOf(a)),
-          L.cancelKind(a) && a.cancelReason ? h("div", { class: "muted small" }, a.cancelReason) : null),
+          L.cancelKind(a) && a.cancelReason ? h("div", { class: "muted small" }, a.cancelReason) : null,
+          L.cancelKind(a) && Number(a.advance) > 0 && typeof a.advanceKept === "boolean" ? h("div", { class: "muted small" }, (a.advanceKept ? "Anticipo retenido " : "Anticipo devuelto ") + L.formatMXN(a.advance)) : null),
         h("span", { class: "tag" }, a.status === "cobrada" ? L.formatMXN(a.total) : L.cancelKind(a) === "no_llego" ? "No llegó" : L.cancelKind(a) ? "Canceló" : a.status))))
         : h("p", { class: "muted" }, "Todavía no tiene citas."),
       h("div", { class: "zona-borrar" },
@@ -689,11 +698,14 @@
       const name = root.querySelector("#s-name").value.trim();
       if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre del servicio."));
       const doc = { ...(id ? v : {}), id: docId, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
+      const rw = Math.floor(Number(root.querySelector("#s-return").value));
+      if (rw > 0) doc.returnWeeks = rw; else delete doc.returnWeeks;
       if (await run(Store.save("services", doc), "Servicio guardado", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar servicio" : "Nuevo servicio"),
       h("label", {}, "Nombre", h("input", { id: "s-name", autocomplete: "off", value: v.name })),
       h("div", { class: "grid2" }, h("label", {}, "Precio", h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, "Duración (min)", h("input", { id: "s-dur", type: "number", min: "5", step: "5", value: v.durationMin }))),
+      h("label", {}, "Vuelve cada (semanas)", h("input", { id: "s-return", type: "number", min: "1", step: "1", inputmode: "numeric", placeholder: "Opcional", value: v.returnWeeks || "" })),
       h("div", {}, h("div", { class: "small", style: "font-weight:600;margin-bottom:6px" }, "Color en la agenda"), palette),
       h("label", { class: "check" }, h("input", { id: "s-active", type: "checkbox", checked: active }), "Disponible para nuevas citas"),
       msg, h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar servicio", save), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
@@ -705,6 +717,21 @@
   function chargeForm() { return h("div", {}, "Cobrar"); }
 
   /* ---------- cobros ---------- */
+  // después de cobrar: ofrecer la siguiente cita con la misma clienta, servicios y hora
+  function chargedSheet(doc) {
+    const c = clientOf(doc.clientId);
+    const cobradas = L.apptServices(doc);
+    const weeks = L.suggestedWeeks(cobradas, S.services);
+    const siguiente = () => {
+      const lines = cobradas.map((l) => { const v = serviceOf(l.serviceId); return v ? L.serviceLine(v) : l; });
+      openSheet(() => apptForm({ date: L.nextVisitDate({ today: todayKey(), weeks, hours: hoursSetting() }), time: timeOf(doc), clientId: doc.clientId, lines,
+        hint: "Sugerida: en " + weeks + (weeks === 1 ? " semana" : " semanas") }));
+    };
+    return h("div", { class: "stack" }, h("h2", {}, "Cobrado"),
+      h("p", { class: "big", style: "margin:0" }, L.formatMXN(doc.total)),
+      c && h("p", { class: "muted", style: "margin:0" }, c.name),
+      h("div", { class: "row" }, c && h("button", { class: "btn", onclick: siguiente }, "Agendar siguiente cita"), h("button", { class: "btn ghost", onclick: closeSheet }, "Listo")));
+  }
   function chargeForm(id) {
     const a0 = S.appts.find((x) => x.id === id);
     if (!a0) return h("div", {}, h("p", {}, "Esta cita ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
@@ -742,7 +769,7 @@
       const subtotal = L.servicesTotals(lines).price;
       if (!subtotal) return msg.append(h("div", { class: "note" }, "El total de los servicios es $0; escribe los precios."));
       const doc = L.withServices({ ...fresh, status: "cobrada", subtotal, advance: num(adv.value), total: cur.total, balance: cur.balance, method: method.value, discountKind: cur.discount.kind, discountAmount: cur.discount.amount, paidAt: todayKey() }, lines);
-      if (await run(Store.save("appointments", doc), "Cobrado", msg)) closeSheet();
+      if (await run(Store.save("appointments", doc), "Cobrado", msg)) openSheet(() => chargedSheet(doc));
     }
     return h("div", { class: "stack" }, h("h2", {}, "Cobrar a " + c.name), h("div", { class: "muted" }, visits, " visitas cobradas"),
       h("div", { class: "stack campo" }, h("span", { class: "lbl" }, "Servicios"), editor.el),
