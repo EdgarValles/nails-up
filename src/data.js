@@ -53,6 +53,13 @@
     return db.collection(name).doc().id;
   };
 
+  // trae lo último del servidor (si la base lo permite) antes de una escritura que parte de lo que se ve
+  Store.refresh = async (name) => {
+    needDb();
+    const col = db.collection(name);
+    if (typeof col.refresh === "function") await col.refresh();
+  };
+
   Store.remove = async (name, id) => {
     needDb();
     await db.collection(name).doc(id).delete();

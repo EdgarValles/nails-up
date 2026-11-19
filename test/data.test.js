@@ -114,3 +114,13 @@ test("newId da un id nuevo que, al reintentar save con él, no duplica", async (
   await Store.save("clients", { id, name: "Ana" });
   assert.deepStrictEqual(last, [{ id, name: "Ana" }]);
 });
+
+test("Store.refresh pide a la base volver a leer, y no falla si la base no sabe hacerlo", async () => {
+  const Store = fresh(); const db = fakeDb(); Store.init(db);
+  await Store.refresh("clients");
+  let llamada = "";
+  const db2 = { collection: (name) => ({ ...fakeDb().collection(name), refresh: async () => { llamada = name; } }) };
+  const Store2 = fresh(); Store2.init(db2);
+  await Store2.refresh("appointments");
+  assert.strictEqual(llamada, "appointments");
+});

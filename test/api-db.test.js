@@ -88,3 +88,16 @@ test("un 401 en onSnapshot llama onUnauthorized y avisa al suscriptor", async ()
   assert.strictEqual(n, 1);
   assert.strictEqual(err.message, MSG401);
 });
+
+test("collection(col).refresh vuelve a leer y avisa con lo que cambió en otro aparato", async () => {
+  const f = fakeFetch({ appointments: { a: { start: "2026-11-20T10:00", status: "pendiente" } } });
+  const db = createApiDb("", f);
+  let last = [];
+  db.collection("appointments").onSnapshot((snap) => (last = snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  await tick();
+  // otro aparato la cancela directo en el servidor
+  await f("/api/appointments/a", { method: "PUT", body: JSON.stringify({ start: "2026-11-20T10:00", status: "cancelada" }) });
+  assert.strictEqual(last[0].status, "pendiente");
+  await db.collection("appointments").refresh();
+  assert.strictEqual(last[0].status, "cancelada");
+});

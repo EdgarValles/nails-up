@@ -239,7 +239,10 @@
           h("div", { class: "muted small" }, resumen(a) + (a.remindedAt ? " · Recordada" : ""))),
         link ? h("a", { class: "btn small " + (a.remindedAt ? "ghost" : "sec"), href: link, target: "_blank", rel: "noopener",
           onclick: async () => {
-            const fresh = S.appts.find((x) => x.id === a.id) || a;
+            // relee del servidor: si en otro aparato la movieron o cancelaron, no se regresa a como estaba
+            try { await Store.refresh("appointments"); } catch (_) {}
+            const fresh = S.appts.find((x) => x.id === a.id);
+            if (!fresh || fresh.status !== "pendiente") return msg.replaceChildren(h("div", { class: "note" }, "Esta cita cambió en otro aparato; cierra y vuelve a abrir los recordatorios."));
             const doc = { ...fresh, remindedAt: todayKey() };
             if (await run(Store.save("appointments", doc), "", msg)) row.replaceWith(fila(doc));
           } }, a.remindedAt ? "Enviar de nuevo" : "Enviar WhatsApp")
@@ -560,7 +563,16 @@
           h("button", { "aria-pressed": String(tab === "servicios"), onclick: () => { S.servTab = "servicios"; render(); } }, "Servicios"),
           h("button", { "aria-pressed": String(tab === "horario"), onclick: () => { S.servTab = "horario"; render(); } }, "Horario")),
         tab === "servicios" && h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, icon("mas"), "Nuevo servicio")),
-      tab === "servicios" ? serviceList() : hoursForm());
+      tab === "servicios" ? serviceList() : hoursSummary());
+  }
+  // resumen del horario en la pestaña; se edita en una hoja para que un repintado no borre lo escrito
+  function hoursSummary() {
+    const cur = hoursSetting();
+    return h("div", { class: "card stack" }, h("h3", {}, "Horario de trabajo"),
+      h("div", { class: "tabla" }, [1, 2, 3, 4, 5, 6, 0].map((d) => h("div", { class: "tabla-fila" },
+        h("span", {}, DIAS[d].replace(/^./, (c) => c.toUpperCase())), h("span", {}),
+        h("span", { class: cur[d].open ? "num" : "muted" }, cur[d].open ? cur[d].start + " a " + cur[d].end : "Descanso")))),
+      h("div", {}, h("button", { class: "btn", onclick: () => openSheet(hoursForm) }, "Editar horario")));
   }
   // horario por día de la semana (empieza en lunes); se guarda en la configuración
   function hoursForm() {
@@ -580,12 +592,12 @@
         if (f.abierto.checked && (!f.de.value || !f.a.value || f.a.value <= f.de.value)) return msg.append(h("div", { class: "note" }, "Revisa el horario del " + DIAS[f.d] + ": la hora de inicio debe ser antes que la de cierre."));
         hours[f.d] = { open: f.abierto.checked, start: f.de.value || "08:00", end: f.a.value || "18:00" };
       }
-      await run(Store.save("settings", { ...settings(), hours, id: "main" }), "Horario guardado", msg);
+      if (await run(Store.save("settings", { ...settings(), hours, id: "main" }), "Horario guardado", msg)) closeSheet();
     }
-    return h("div", { class: "card stack" }, h("h3", {}, "Horario de trabajo"),
+    return h("div", { class: "stack" }, h("h2", {}, "Horario de trabajo"),
       h("p", { class: "muted small", style: "margin:0" }, "Fuera de este horario la agenda se ve sombreada y te avisa al agendar, pero sí te deja guardar."),
       h("div", { class: "horario" }, filas.map((f) => f.el)), msg,
-      h("div", {}, busyBtn({ class: "btn" }, "Guardar horario", guardar)));
+      h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar horario", guardar), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function clientList() {
     const q = S.clientQuery.trim().toLowerCase();

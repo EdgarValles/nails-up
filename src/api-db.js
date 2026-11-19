@@ -51,6 +51,8 @@
               },
             };
           },
+          // vuelve a leer del servidor: lo que cambió en otro aparato llega antes de escribir encima
+          refresh: () => refresh(col),
           onSnapshot(next, error) {
             const entry = { next, error };
             (subs[col] = subs[col] || new Set()).add(entry);
