@@ -64,7 +64,7 @@ test("doc() without id generates distinct valid ids", () => {
 });
 test("a network failure rejects with a Spanish message", async () => {
   const db = createApiDb("", async () => { throw new TypeError("fetch failed"); });
-  await assert.rejects(() => db.collection("clients").doc("a").set({}), /No hay conexión con el servidor local\. ¿Está encendido\?/);
+  await assert.rejects(() => db.collection("clients").doc("a").set({}), /No hay conexión con el servidor\. Revisa tu internet e intenta de nuevo\./);
 });
 test("the build includes createApiDb in dist/index.html", () => {
   const root = path.join(__dirname, "..");

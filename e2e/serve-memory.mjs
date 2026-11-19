@@ -10,11 +10,14 @@ const { fakeMongo } = require("../test/helpers/fake-mongo.js");
 
 const cols = {};
 let n = 0;
+// LENTO_MS=1500 simula un servidor lento (como Render con Atlas) al guardar y borrar
+const lento = Number(process.env.LENTO_MS) || 0;
+const espera = () => new Promise((r) => setTimeout(r, lento));
 const store = {
   async list(c) { return Object.entries(cols[c] || {}).map(([id, b]) => ({ id, ...b })); },
-  async put(c, id, b) { (cols[c] = cols[c] || {})[id] = b; },
-  async add(c, b) { const id = "g" + ++n; (cols[c] = cols[c] || {})[id] = b; return id; },
-  async remove(c, id) { delete (cols[c] || {})[id]; },
+  async put(c, id, b) { await espera(); (cols[c] = cols[c] || {})[id] = b; },
+  async add(c, b) { await espera(); const id = "g" + ++n; (cols[c] = cols[c] || {})[id] = b; return id; },
+  async remove(c, id) { await espera(); delete (cols[c] || {})[id]; },
 };
 const authStore = createAuthStore(fakeMongo());
 await authStore.createUser(await hashPassword("portal-de-prueba-1"));

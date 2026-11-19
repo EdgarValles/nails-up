@@ -1,6 +1,6 @@
 // adaptador: imita la capacidad db usando la API del servidor local
 (function (root) {
-  const NET_ERR = "No hay conexión con el servidor local. ¿Está encendido?";
+  const NET_ERR = "No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.";
 
   function createApiDb(baseUrl, fetchFn, { onUnauthorized } = {}) {
     const onUnauth = onUnauthorized || (() => root.location.assign("/login"));

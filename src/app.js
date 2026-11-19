@@ -85,9 +85,27 @@
     render();
   }
   function closeSheet() { S.sheet = null; render(); }
-  async function run(promise, okMsg) {
+  // con msg (el aviso del formulario abierto) el error se ve dentro de la hoja; sin él, arriba de la pantalla
+  function showError(e, msg) {
+    const text = e && e.message ? e.message : "No se pudo guardar. Intenta de nuevo.";
+    if (msg) msg.replaceChildren(h("div", { class: "note", role: "alert" }, text));
+    else { S.error = text; render(); }
+  }
+  async function run(promise, okMsg, msg) {
     try { await promise; if (okMsg) toast(okMsg); return true; }
-    catch (e) { S.error = e && e.message ? e.message : "No se pudo guardar. Intenta de nuevo."; render(); return false; }
+    catch (e) { showError(e, msg); return false; }
+  }
+  // botón que se bloquea mientras el servidor responde: un segundo clic no hace nada
+  function busyBtn(attrs, label, handler, busyLabel = "Guardando…") {
+    const kids = () => (Array.isArray(label) ? label : [label]);
+    let busy = false;
+    const btn = h("button", { ...attrs, onclick: async () => {
+      if (busy) return;
+      busy = true; btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.replaceChildren(busyLabel);
+      try { await handler(); }
+      finally { busy = false; btn.disabled = false; btn.removeAttribute("aria-busy"); btn.replaceChildren(...kids()); }
+    } }, ...kids());
+    return btn;
   }
 
   /* ---------- render ---------- */
@@ -254,7 +272,13 @@
     svcSel.addEventListener("change", () => { const s = serviceOf(svcSel.value); if (s && !dur.value) dur.value = s.durationMin; });
     const msg = h("div", { "aria-live": "polite" });
 
+    let saving = false, nuevaId = "";
     async function save(force) {
+      if (saving) return;
+      saving = true;
+      try { await saveAppt(force); } finally { saving = false; }
+    }
+    async function saveAppt(force) {
       msg.replaceChildren();
       let clientId = clientSel.value;
       const svc = serviceOf(svcSel.value);
@@ -267,7 +291,11 @@
         if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la clienta."));
         const dup = L.findClientByPhone(S.clients, phone);
         if (dup) return msg.append(h("div", { class: "note" }, "Ya existe " + dup.name + " con ese teléfono. Elígela en la lista."));
-        clientId = await Store.save("clients", { name, phone, canal: "whatsapp", birthday: "", notes: "" });
+        if (!nuevaId) {
+          try { nuevaId = await Store.save("clients", { name, phone, canal: "whatsapp", birthday: "", notes: "" }); }
+          catch (e) { return showError(e, msg); }
+        }
+        clientId = nuevaId;
       }
       const appt = {
         ...(existing || {}), id: existing && existing.id,
@@ -281,10 +309,10 @@
         if (clash) {
           const who = clientOf(clash.clientId);
           return msg.append(h("div", { class: "note" }, "Se empalma con la cita de " + (who ? who.name : "otra clienta") + " a las " + timeOf(clash) + ". ",
-            h("button", { class: "btn small ghost", onclick: () => save(true) }, "Guardar de todos modos")));
+            busyBtn({ class: "btn small ghost" }, "Guardar de todos modos", () => save(true))));
         }
       }
-      if (await run(Store.save("appointments", appt), "Cita guardada")) { S.date = date; closeSheet(); }
+      if (await run(Store.save("appointments", appt), "Cita guardada", msg)) { S.date = date; closeSheet(); }
     }
     return h("div", { class: "stack" }, h("h2", {}, existing ? "Editar cita" : "Nueva cita"),
       h("label", {}, "Clienta", clientSel), newBox,
@@ -293,7 +321,7 @@
       h("div", { class: "grid2" }, h("label", {}, "Duración (min)", dur), h("label", {}, "Anticipo recibido", h("input", { id: "f-adv", type: "number", min: "0", inputmode: "decimal", value: f.advance || "" }))),
       h("label", {}, "Notas del diseño", h("textarea", { id: "f-notes" }, f.notes || "")),
       msg,
-      h("div", { class: "row" }, h("button", { class: "btn", onclick: () => save(false) }, "Guardar cita"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+      h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar cita", () => save(false)), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
 
   /* ---------- detalle de cita ---------- */
@@ -323,9 +351,10 @@
   }
   function confirmCancel(id) {
     const a = S.appts.find((x) => x.id === id);
+    const msg = h("div", { "aria-live": "polite" });
     return h("div", { class: "stack" }, h("h2", {}, "¿Cancelar esta cita?"), h("p", { class: "muted" }, "La cita queda en el historial como cancelada y no cuenta como visita."),
-      h("div", { class: "row" },
-        h("button", { class: "btn danger", onclick: async () => { if (await run(Store.save("appointments", { ...a, status: "cancelada" }), "Cita cancelada")) closeSheet(); } }, "Sí, cancelar cita"),
+      msg, h("div", { class: "row" },
+        busyBtn({ class: "btn danger" }, "Sí, cancelar cita", async () => { if (await run(Store.save("appointments", { ...a, status: "cancelada" }), "Cita cancelada", msg)) closeSheet(); }),
         h("button", { class: "btn ghost", onclick: () => openSheet(() => apptDetail(id)) }, "Volver")));
   }
 
@@ -391,7 +420,7 @@
       const m = mes.value, d = Number(dia.value);
       if (m && d >= 1 && d <= 31) birthday = m + "-" + String(d).padStart(2, "0");
       const doc = { ...(id ? c : {}), id, name, phone, birthday, canal: root.querySelector("#c-canal").value, notes: root.querySelector("#c-notes").value.trim() };
-      if (await run(Store.save("clients", doc), "Clienta guardada")) closeSheet();
+      if (await run(Store.save("clients", doc), "Clienta guardada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar clienta" : "Nueva clienta"),
       h("label", {}, "Nombre", h("input", { id: "c-name", autocomplete: "off", value: c.name })),
@@ -399,7 +428,7 @@
       h("div", { class: "grid2" }, h("label", {}, "Mes de cumpleaños", mes), h("label", {}, "Día", dia)),
       h("label", {}, "Cómo llegó", h("select", { id: "c-canal" }, [["whatsapp", "WhatsApp"], ["facebook", "Facebook"], ["otro", "Otro"]].map(([v, t]) => h("option", { value: v, selected: c.canal === v }, t)))),
       h("label", {}, "Notas", h("textarea", { id: "c-notes" }, c.notes || "")),
-      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar clienta"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+      msg, h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar clienta", save), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function serviceList() {
     if (!S.services.length) return h("div", { class: "empty" }, h("p", {}, "Aún no hay servicios. Agrega el primero."), h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio"));
@@ -419,14 +448,14 @@
       const name = root.querySelector("#s-name").value.trim();
       if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre del servicio."));
       const doc = { ...(id ? v : {}), id, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
-      if (await run(Store.save("services", doc), "Servicio guardado")) closeSheet();
+      if (await run(Store.save("services", doc), "Servicio guardado", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar servicio" : "Nuevo servicio"),
       h("label", {}, "Nombre", h("input", { id: "s-name", autocomplete: "off", value: v.name })),
       h("div", { class: "grid2" }, h("label", {}, "Precio", h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, "Duración (min)", h("input", { id: "s-dur", type: "number", min: "5", step: "5", value: v.durationMin }))),
       h("div", {}, h("div", { class: "small", style: "font-weight:600;margin-bottom:6px" }, "Color en la agenda"), palette),
       h("label", { class: "check" }, h("input", { id: "s-active", type: "checkbox", checked: active }), "Disponible para nuevas citas"),
-      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar servicio"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+      msg, h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar servicio", save), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
 
   function screenCobros() { return h("div", {}, "Cobros"); }
@@ -467,12 +496,12 @@
       if (!fresh || fresh.status !== "pendiente") return msg.append(h("div", { class: "note" }, "Esta cita ya fue cobrada o cancelada."));
       if (!num(sub.value)) return msg.append(h("div", { class: "note" }, "Escribe el precio del servicio."));
       const doc = { ...fresh, status: "cobrada", subtotal: num(sub.value), advance: num(adv.value), total: cur.total, balance: cur.balance, method: method.value, discountKind: cur.discount.kind, discountAmount: cur.discount.amount, paidAt: todayKey() };
-      if (await run(Store.save("appointments", doc), "Cobrado")) closeSheet();
+      if (await run(Store.save("appointments", doc), "Cobrado", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, "Cobrar a " + c.name), h("div", { class: "muted" }, a0.serviceName, " · ", visits, " visitas cobradas"),
       h("div", { class: "grid2" }, h("label", {}, "Precio del servicio", sub), h("label", {}, "Anticipo recibido", adv)),
       h("label", {}, "Método de pago", method), info, msg,
-      h("div", { class: "row" }, h("button", { class: "btn", onclick: cobrar }, "Cobrar"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+      h("div", { class: "row" }, busyBtn({ class: "btn" }, "Cobrar", cobrar), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function screenCobros() {
     const now = todayKey();
@@ -510,7 +539,7 @@
       h("div", { class: "grid2" },
         h("label", {}, "Cada cuántas visitas", h("input", { id: "l-every", type: "number", min: "0", value: st.loyaltyEvery })),
         h("label", {}, "Descuento (%)", h("input", { id: "l-pct", type: "number", min: "0", max: "100", value: st.loyaltyPercent }))),
-      h("div", {}, h("button", { class: "btn sec", onclick: () => saveSettings({ loyaltyEvery: Math.max(0, Math.floor(Number(root.querySelector("#l-every").value) || 0)), loyaltyPercent: Math.min(100, Math.max(0, Number(root.querySelector("#l-pct").value) || 0)) }, "Lealtad guardada") }, "Guardar lealtad")));
+      h("div", {}, busyBtn({ class: "btn sec" }, "Guardar lealtad", () => saveSettings({ loyaltyEvery: Math.max(0, Math.floor(Number(root.querySelector("#l-every").value) || 0)), loyaltyPercent: Math.min(100, Math.max(0, Number(root.querySelector("#l-pct").value) || 0)) }, "Lealtad guardada"))));
     const rows = S.promos.slice().sort((a, b) => a.name.localeCompare(b.name));
     return h("div", { class: "stack" }, loy,
       rows.length ? h("div", { class: "stack" }, rows.map((p) => h("div", { class: "card stack" },
@@ -535,14 +564,14 @@
       if (!(percent > 0 && percent <= 100)) return msg.append(h("div", { class: "note" }, "El descuento debe estar entre 1 y 100."));
       if (type === "temporada" && (!from || !to || to < from)) return msg.append(h("div", { class: "note" }, "Indica las fechas; la fecha final no puede ser antes de la inicial."));
       const doc = { ...(id ? p : {}), id, name, type, percent, active: root.querySelector("#pr-act").checked, ...(type === "temporada" ? { startDate: from, endDate: to } : { startDate: "", endDate: "" }) };
-      if (await run(Store.save("promos", doc), "Promoción guardada")) closeSheet();
+      if (await run(Store.save("promos", doc), "Promoción guardada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar promoción" : "Nueva promoción"),
       h("label", {}, "Nombre", h("input", { id: "pr-name", autocomplete: "off", value: p.name })),
       h("div", { class: "grid2" }, h("label", {}, "Tipo", tipo), h("label", {}, "Descuento (%)", h("input", { id: "pr-pct", type: "number", min: "1", max: "100", value: p.percent }))),
       fechas,
       h("label", { class: "check" }, h("input", { id: "pr-act", type: "checkbox", checked: p.active !== false }), "Promoción activa"),
-      msg, h("div", { class: "row" }, h("button", { class: "btn", onclick: save }, "Guardar promoción"), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+      msg, h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar promoción", save), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function outreach() {
     const st = settings();
@@ -550,7 +579,7 @@
     return h("div", { class: "stack" },
       h("div", { class: "card stack" }, h("h3", {}, "Clientas que no han vuelto"),
         h("div", { class: "row" }, h("label", { style: "flex:1" }, "Semanas sin venir", h("input", { id: "o-weeks", type: "number", min: "1", value: st.inactiveWeeks })),
-          h("button", { class: "btn sec", onclick: () => saveSettings({ inactiveWeeks: Math.max(1, Math.floor(Number(root.querySelector("#o-weeks").value) || 5)) }, "Plazo guardado") }, "Guardar plazo"))),
+          busyBtn({ class: "btn sec" }, "Guardar plazo", () => saveSettings({ inactiveWeeks: Math.max(1, Math.floor(Number(root.querySelector("#o-weeks").value) || 5)) }, "Plazo guardado")))),
       list.length ? h("div", { class: "list" }, list.map(({ client, weeksAway }) => { const link = L.whatsappLink(client.phone, L.reactivationMessage(client)); return h("div", { class: "item", style: "cursor:default" },
         h("span", {}, h("div", { class: "name" }, client.name), h("div", { class: "muted small" }, weeksAway + " semanas sin venir")),
         link ? h("a", { class: "btn small", href: link, target: "_blank", rel: "noopener", style: "text-decoration:none;display:inline-flex;align-items:center" }, "Escribir por WhatsApp") : h("span", { class: "muted small" }, "Sin teléfono")); }))
