@@ -174,6 +174,7 @@
           h("div", { class: "seg", role: "group", "aria-label": "Vista" },
             h("button", { "aria-pressed": String(!isWeek), onclick: () => { S.view = "dia"; render(); } }, "Día"),
             h("button", { "aria-pressed": String(isWeek), onclick: () => { S.view = "semana"; render(); } }, "Semana")),
+          remindersButton(),
           h("button", { class: "btn small sec", onclick: () => openSheet(() => blockForm(S.date)) }, "Bloquear horario"),
           h("button", { class: "btn solo-ancho", onclick: () => openSheet(() => apptForm({ date: S.date })) }, icon("mas"), "Nueva cita"))),
       !isWeek && dayStrip(monday),
@@ -220,6 +221,35 @@
         h("span", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("span", { class: "num" }, Number(d.slice(8, 10))),
         !L.dayHours(hrs, d).open && h("span", { class: "descanso" }, "Descanso")))),
       h("div", { class: "cal-body" }, h("div", { class: "hours" }, hours), cols));
+  }
+  /* ---------- recordatorios de mañana ---------- */
+  const tomorrowPending = () => apptsOn(addDays(todayKey(), 1)).filter((a) => a.status === "pendiente");
+  function remindersButton() {
+    const faltan = tomorrowPending().filter((a) => !a.remindedAt).length;
+    return h("button", { class: "btn small sec", onclick: () => openSheet(remindersSheet) }, "Recordatorios" + (faltan ? " · " + faltan : ""));
+  }
+  function remindersSheet() {
+    const manana = addDays(todayKey(), 1);
+    const list = tomorrowPending();
+    function fila(a) {
+      const c = clientOf(a.clientId);
+      const link = c && L.whatsappLink(c.phone, L.reminderMessage(c.name, timeOf(a)));
+      const row = h("div", { class: "item recordatorio", style: "cursor:default" },
+        h("span", {}, h("div", { class: "name" }, timeOf(a) + " · " + (c ? c.name : "Clienta eliminada")),
+          h("div", { class: "muted small" }, resumen(a) + (a.remindedAt ? " · Recordada" : ""))),
+        link ? h("a", { class: "btn small " + (a.remindedAt ? "ghost" : "sec"), href: link, target: "_blank", rel: "noopener",
+          onclick: async () => {
+            const fresh = S.appts.find((x) => x.id === a.id) || a;
+            const doc = { ...fresh, remindedAt: todayKey() };
+            if (await run(Store.save("appointments", doc), "", msg)) row.replaceWith(fila(doc));
+          } }, a.remindedAt ? "Enviar de nuevo" : "Enviar WhatsApp")
+          : h("span", { class: "muted small" }, "Sin teléfono"));
+      return row;
+    }
+    const msg = h("div", { "aria-live": "polite" });
+    return h("div", { class: "stack" }, h("h2", {}, "Citas de mañana"), h("p", { class: "muted", style: "margin:0" }, fullDate(manana).replace(/^./, (x) => x.toUpperCase())),
+      list.length ? h("div", { class: "list" }, list.map(fila)) : h("p", { class: "muted" }, "No hay citas pendientes para mañana."),
+      msg, h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   // sombreado fuera de horario (no recibe toques: tocar ahí sigue creando cita)
   function offHours(d, hrs, startMin, endMin) {
@@ -418,6 +448,7 @@
         notes: root.querySelector("#f-notes").value.trim(), advance: num(root.querySelector("#f-adv").value),
         status: existing ? existing.status : "pendiente",
       }, lines);
+      if (existing && existing.start !== appt.start) delete appt.remindedAt;
       if (!force) {
         const avisos = [];
         const clash = S.appts.find((o) => o.id !== appt.id && o.status !== "cancelada" && L.appointmentsOverlap(o, appt));
