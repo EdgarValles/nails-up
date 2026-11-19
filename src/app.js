@@ -253,6 +253,36 @@
       chip(a.status));
   }
 
+  /* ---------- lista de servicios de una cita (al agendar y al cobrar) ---------- */
+  function servicesEditor({ lines, editablePrice, onChange }) {
+    const list = lines.map((l) => ({ ...l }));
+    const box = h("div", { class: "svc-lines" });
+    const add = h("select", { "aria-label": "Agregar servicio" });
+    const changed = () => onChange(list.map((l) => ({ ...l })));
+    const fillAdd = () => add.replaceChildren(h("option", { value: "" }, "Agregar servicio"),
+      ...S.services.filter((v) => v.active !== false).sort((a, b) => a.name.localeCompare(b.name))
+        .map((v) => h("option", { value: v.id }, v.name + (v.price ? " · " + L.formatMXN(v.price) : ""))));
+    function paintLines() {
+      box.replaceChildren(...(list.length ? list.map((l, i) => h("div", { class: "svc-line" },
+        h("span", { class: "dotc", style: "background:" + (l.color || TONES[0]) }),
+        h("span", { class: "svc-name" }, h("span", {}, l.name), h("span", { class: "muted small" }, L.formatDuration(l.durationMin))),
+        editablePrice
+          ? h("input", { class: "svc-price", type: "number", min: "0", inputmode: "decimal", placeholder: "0", "aria-label": "Precio de " + l.name, value: l.price || "",
+              oninput: (e) => { list[i].price = num(e.target.value); changed(); } })
+          : h("span", { class: "svc-price" }, l.price ? L.formatMXN(l.price) : ""),
+        h("button", { type: "button", class: "btn small ghost", "aria-label": "Quitar " + l.name, onclick: () => { list.splice(i, 1); paintLines(); changed(); } }, "Quitar")))
+        : [h("p", { class: "muted small" }, "Sin servicios todavía.")]));
+    }
+    add.addEventListener("change", () => {
+      const v = serviceOf(add.value);
+      add.value = "";
+      if (!v) return;
+      list.push(L.serviceLine(v)); paintLines(); changed();
+    });
+    fillAdd(); paintLines();
+    return { el: h("div", { class: "stack svc-editor" }, box, add), getLines: () => list.map((l) => ({ ...l })) };
+  }
+
   /* ---------- formulario de cita ---------- */
   function apptForm(init, existing) {
     if (init && init.clientId && !existing) init = { ...init };
@@ -274,11 +304,19 @@
     };
     clientSel.addEventListener("change", pintaTendencia);
     pintaTendencia();
-    const activos = S.services.filter((s) => s.active !== false || s.id === f.serviceId);
-    const svcSel = h("select", { id: "f-svc" }, h("option", { value: "" }, "Elige un servicio"),
-      activos.map((s) => h("option", { value: s.id, selected: s.id === f.serviceId }, s.name + (s.price ? " · " + L.formatMXN(s.price) : ""))));
+    const lines0 = existing ? L.apptServices(existing) : [];
     const dur = h("input", { id: "f-dur", type: "number", min: "5", step: "5", value: f.durationMin });
-    svcSel.addEventListener("change", () => { const s = serviceOf(svcSel.value); if (s && !dur.value) dur.value = s.durationMin; });
+    // la duración es la suma de los servicios hasta que la cambias a mano
+    let durManual = !!existing && Number(existing.durationMin) !== L.servicesTotals(lines0).durationMin;
+    dur.addEventListener("input", () => { durManual = true; });
+    const estimado = h("div", { class: "muted small", "aria-live": "polite" });
+    const pintaEstimado = (lines) => {
+      const t = L.servicesTotals(lines);
+      estimado.textContent = lines.length ? "Total estimado: " + (t.price ? L.formatMXN(t.price) + " · " : "") + L.formatDuration(t.durationMin) : "";
+      if (!durManual) dur.value = lines.length ? t.durationMin : "";
+    };
+    const editor = servicesEditor({ lines: lines0, editablePrice: false, onChange: pintaEstimado });
+    pintaEstimado(lines0);
     const msg = h("div", { "aria-live": "polite" });
 
     // ids fijos para este formulario: un reintento sobrescribe en lugar de duplicar
@@ -291,10 +329,10 @@
     async function saveAppt(force) {
       msg.replaceChildren();
       let clientId = clientSel.value;
-      const svc = serviceOf(svcSel.value);
+      const lines = editor.getLines();
       const date = root.querySelector("#f-date").value, time = root.querySelector("#f-time").value;
       if (!clientId) return msg.append(h("div", { class: "note" }, "Elige una clienta o crea una nueva."));
-      if (!svc) return msg.append(h("div", { class: "note" }, "Elige un servicio."));
+      if (!lines.length) return msg.append(h("div", { class: "note" }, "Agrega al menos un servicio."));
       if (!date || !time) return msg.append(h("div", { class: "note" }, "Indica fecha y hora."));
       if (clientId === "__new") {
         const name = root.querySelector("#f-nn").value.trim(), phone = root.querySelector("#f-np").value;
@@ -308,13 +346,12 @@
         }
         clientId = idClienta;
       }
-      const appt = {
+      const appt = L.withServices({
         ...(existing || {}), id: idCita || (idCita = Store.newId("appointments")),
-        clientId, serviceId: svc.id, serviceName: svc.name, serviceColor: svc.color,
-        start: date + "T" + time, durationMin: Number(dur.value) || svc.durationMin || 30,
+        clientId, start: date + "T" + time, durationMin: Number(dur.value) || L.servicesTotals(lines).durationMin || 30,
         notes: root.querySelector("#f-notes").value.trim(), advance: num(root.querySelector("#f-adv").value),
-        status: existing ? existing.status : "pendiente", price: svc.price || 0,
-      };
+        status: existing ? existing.status : "pendiente",
+      }, lines);
       if (!force) {
         const clash = S.appts.find((o) => o.id !== appt.id && o.status !== "cancelada" && L.appointmentsOverlap(o, appt));
         if (clash) {
@@ -327,7 +364,7 @@
     }
     return h("div", { class: "stack" }, h("h2", {}, existing ? "Editar cita" : "Nueva cita"),
       h("label", {}, "Clienta", clientSel), tendBox, newBox,
-      h("label", {}, "Servicio", svcSel),
+      h("div", { class: "stack campo" }, h("span", { class: "lbl" }, "Servicios"), editor.el, estimado),
       h("div", { class: "grid2" }, h("label", {}, "Fecha", h("input", { id: "f-date", type: "date", value: f.date })), h("label", {}, "Hora", h("input", { id: "f-time", type: "time", value: f.time }))),
       h("div", { class: "grid2" }, h("label", {}, "Duración (min)", dur), h("label", {}, "Anticipo recibido", h("input", { id: "f-adv", type: "number", min: "0", inputmode: "decimal", value: f.advance || "" }))),
       h("label", {}, "Notas del diseño", h("textarea", { id: "f-notes" }, f.notes || "")),
