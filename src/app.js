@@ -22,7 +22,7 @@
 
   const S = {
     tab: "agenda", view: "dia", date: L.dateKey(new Date()),
-    clients: [], services: [], appts: [], promos: [], settings: {},
+    clients: [], services: [], appts: [], promos: [], settings: {}, blocks: [],
     sheet: null, toast: "", error: "", loading: true, clientTab: "clientas", clientQuery: "",
   };
 
@@ -72,6 +72,8 @@
   const serviceOf = (id) => S.services.find((s) => s.id === id);
   const apptsOn = (key) => S.appts.filter((a) => a.start.slice(0, 10) === key).sort(byStart);
   const settings = () => ({ loyaltyEvery: 6, loyaltyPercent: 15, inactiveWeeks: 5, ...(S.settings.main || {}) });
+  const hoursSetting = () => { const x = settings().hours; return Array.isArray(x) && x.length === 7 ? x : L.DEFAULT_HOURS; };
+  const minOf = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : 0; };
 
   let toastTimer;
@@ -172,6 +174,7 @@
           h("div", { class: "seg", role: "group", "aria-label": "Vista" },
             h("button", { "aria-pressed": String(!isWeek), onclick: () => { S.view = "dia"; render(); } }, "Día"),
             h("button", { "aria-pressed": String(isWeek), onclick: () => { S.view = "semana"; render(); } }, "Semana")),
+          h("button", { class: "btn small sec", onclick: () => openSheet(() => blockForm(S.date)) }, "Bloquear horario"),
           h("button", { class: "btn solo-ancho", onclick: () => openSheet(() => apptForm({ date: S.date })) }, icon("mas"), "Nueva cita"))),
       !isWeek && dayStrip(monday),
       h("div", { class: "agenda-wrap" },
@@ -189,7 +192,8 @@
   }
   // cuadrícula de horas: una columna por día, cada cita mide lo que dura
   function calendar(days) {
-    const layouts = days.map((d) => L.layoutDay(apptsOn(d)));
+    const hrs = hoursSetting(), range = L.agendaRange(hrs);
+    const layouts = days.map((d) => L.layoutDay(apptsOn(d), range));
     const startMin = Math.min(...layouts.map((l) => l.startMin)), endMin = Math.max(...layouts.map((l) => l.endMin));
     const week = days.length > 1, today = todayKey();
     const hours = [];
@@ -202,6 +206,8 @@
         const m = Math.max(startMin, Math.min(endMin - 30, startMin + Math.floor(y / 30) * 30));
         openSheet(() => apptForm({ date: d, time: hhmm(m) }));
       } },
+        offHours(d, hrs, startMin, endMin),
+        L.blocksOn(S.blocks, d).map((b) => blockTile(b, startMin, endMin)),
         lay.items.map((it) => apptBlock(it.appt, it.top + lay.startMin - startMin, it.height, it.lane, it.lanes)));
       if (d === today) {
         const n = nowMin();
@@ -211,8 +217,66 @@
     });
     return h("section", { class: "cal" + (week ? " semana" : ""), style: "--cols:" + days.length + ";--span:" + (endMin - startMin), "aria-label": week ? "Agenda de la semana" : "Agenda del día" },
       week && h("div", { class: "cal-head" }, h("span", {}), days.map((d) => h("button", { class: d === today ? "hoy" : "", "aria-label": "Ver " + fullDate(d), onclick: () => { S.date = d; S.view = "dia"; render(); } },
-        h("span", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("span", { class: "num" }, Number(d.slice(8, 10)))))),
+        h("span", { class: "dn" }, DIAS[weekday(d)].slice(0, 3)), h("span", { class: "num" }, Number(d.slice(8, 10))),
+        !L.dayHours(hrs, d).open && h("span", { class: "descanso" }, "Descanso")))),
       h("div", { class: "cal-body" }, h("div", { class: "hours" }, hours), cols));
+  }
+  // sombreado fuera de horario (no recibe toques: tocar ahí sigue creando cita)
+  function offHours(d, hrs, startMin, endMin) {
+    const dh = L.dayHours(hrs, d);
+    const zona = (top, height, txt) => height > 0 && h("div", { class: "fuera", "aria-hidden": "true", style: "--t:" + top + ";--h:" + height }, txt || null);
+    if (!dh.open) return [zona(0, endMin - startMin, "Descanso")];
+    return [zona(0, minOf(dh.start) - startMin), zona(minOf(dh.end) - startMin, endMin - minOf(dh.end))];
+  }
+  function blockTile(b, startMin, endMin) {
+    const top = b.allDay ? 0 : Math.max(0, minOf(b.start) - startMin);
+    const bottom = b.allDay ? endMin - startMin : Math.min(endMin - startMin, minOf(b.end) - startMin);
+    if (bottom <= top) return null;
+    return h("button", { class: "bloqueo" + (bottom - top <= 30 ? " corto" : ""), style: "--t:" + top + ";--h:" + (bottom - top),
+      "aria-label": "Bloqueo " + b.reason + (b.allDay ? ", todo el día" : ", " + b.start + " a " + b.end), onclick: () => openSheet(() => blockDetail(b.id)) },
+      h("span", { class: "quien" }, b.reason), !b.allDay && h("span", { class: "t" }, b.start + "–" + b.end));
+  }
+  function blockForm(date) {
+    const msg = h("div", { "aria-live": "polite" });
+    const motivo = h("input", { id: "b-reason", autocomplete: "off", value: "Comida" });
+    const fecha = h("input", { id: "b-date", type: "date", value: date });
+    const todo = h("input", { id: "b-all", type: "checkbox" });
+    const de = h("input", { id: "b-from", type: "time", value: "14:00" }), a = h("input", { id: "b-to", type: "time", value: "15:00" });
+    const hasta = h("input", { id: "b-until", type: "date", value: date });
+    const horas = h("div", { class: "grid2" }, h("label", {}, "De", de), h("label", {}, "A", a));
+    const dias = h("label", { hidden: true }, "Hasta el día", hasta);
+    todo.addEventListener("change", () => { horas.hidden = todo.checked; dias.hidden = !todo.checked; if (todo.checked && hasta.value < fecha.value) hasta.value = fecha.value; });
+    let docId = "";
+    async function guardar() {
+      msg.replaceChildren();
+      const reason = motivo.value.trim();
+      if (!reason) return msg.append(h("div", { class: "note" }, "Escribe el motivo."));
+      if (!fecha.value) return msg.append(h("div", { class: "note" }, "Elige la fecha."));
+      let doc;
+      if (todo.checked) {
+        if (!hasta.value || hasta.value < fecha.value) return msg.append(h("div", { class: "note" }, "La fecha final no puede ser antes de la inicial."));
+        doc = { date: fecha.value, endDate: hasta.value, allDay: true, start: "", end: "", reason };
+      } else {
+        if (!de.value || !a.value || a.value <= de.value) return msg.append(h("div", { class: "note" }, "La hora final debe ser después de la inicial."));
+        doc = { date: fecha.value, endDate: fecha.value, allDay: false, start: de.value, end: a.value, reason };
+      }
+      if (!docId) docId = Store.newId("blocks");
+      if (await run(Store.save("blocks", { id: docId, ...doc }), "Horario bloqueado", msg)) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, "Bloquear horario"),
+      h("label", {}, "Motivo", motivo), h("label", {}, "Fecha", fecha),
+      h("label", { class: "check" }, todo, "Todo el día"), horas, dias,
+      msg, h("div", { class: "row" }, busyBtn({ class: "btn" }, "Bloquear", guardar), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
+  }
+  function blockDetail(id) {
+    const b = S.blocks.find((x) => x.id === id);
+    if (!b) return h("div", {}, h("p", {}, "Este bloqueo ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
+    const msg = h("div", { "aria-live": "polite" });
+    const cuando = b.allDay ? (b.endDate && b.endDate !== b.date ? "Del " + dmy(b.date) + " al " + dmy(b.endDate) + ", todo el día" : dmy(b.date) + ", todo el día") : dmy(b.date) + " de " + b.start + " a " + b.end;
+    return h("div", { class: "stack" }, h("h2", {}, b.reason), h("p", { class: "muted" }, cuando),
+      msg, h("div", { class: "row" },
+        busyBtn({ class: "btn danger" }, "Eliminar bloqueo", async () => { if (await run(Store.remove("blocks", id), "Bloqueo eliminado", msg)) closeSheet(); }, "Eliminando…"),
+        h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
   function apptBlock(a, top, height, lane, lanes) {
     const c = clientOf(a.clientId);
@@ -355,12 +419,15 @@
         status: existing ? existing.status : "pendiente",
       }, lines);
       if (!force) {
+        const avisos = [];
         const clash = S.appts.find((o) => o.id !== appt.id && o.status !== "cancelada" && L.appointmentsOverlap(o, appt));
         if (clash) {
           const who = clientOf(clash.clientId);
-          return msg.append(h("div", { class: "note" }, "Se empalma con la cita de " + (who ? who.name : "otra clienta") + " a las " + timeOf(clash) + ". ",
-            busyBtn({ class: "btn small ghost" }, "Guardar de todos modos", () => save(true))));
+          avisos.push("Se empalma con la cita de " + (who ? who.name : "otra clienta") + " a las " + timeOf(clash) + ".");
         }
+        avisos.push(...L.scheduleWarnings(appt, { hours: hoursSetting(), blocks: S.blocks }));
+        if (avisos.length) return msg.append(h("div", { class: "note stack" }, avisos.map((t) => h("div", {}, t)),
+          h("div", {}, busyBtn({ class: "btn small ghost" }, "Guardar de todos modos", () => save(true)))));
       }
       if (await run(Store.save("appointments", appt), "Cita guardada", msg)) { S.date = date; closeSheet(); }
     }
@@ -447,9 +514,39 @@
       clientList());
   }
   function screenServicios() {
+    const tab = S.servTab || "servicios";
     return h("div", {},
-      pageHead("Servicios y precios", h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, icon("mas"), "Nuevo servicio")),
-      serviceList());
+      pageHead("Servicios y precios",
+        h("div", { class: "seg", role: "group", "aria-label": "Sección" },
+          h("button", { "aria-pressed": String(tab === "servicios"), onclick: () => { S.servTab = "servicios"; render(); } }, "Servicios"),
+          h("button", { "aria-pressed": String(tab === "horario"), onclick: () => { S.servTab = "horario"; render(); } }, "Horario")),
+        tab === "servicios" && h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, icon("mas"), "Nuevo servicio")),
+      tab === "servicios" ? serviceList() : hoursForm());
+  }
+  // horario por día de la semana (empieza en lunes); se guarda en la configuración
+  function hoursForm() {
+    const cur = hoursSetting();
+    const orden = [1, 2, 3, 4, 5, 6, 0];
+    const filas = orden.map((d) => {
+      const x = cur[d];
+      const abierto = h("input", { type: "checkbox", checked: !!x.open, "aria-label": "Abierto el " + DIAS[d] });
+      const de = h("input", { type: "time", value: x.start, "aria-label": "Abre el " + DIAS[d] }), a = h("input", { type: "time", value: x.end, "aria-label": "Cierra el " + DIAS[d] });
+      return { d, abierto, de, a, el: h("div", { class: "hora-dia" }, h("label", { class: "check" }, abierto, DIAS[d].replace(/^./, (c) => c.toUpperCase())), de, a) };
+    });
+    const msg = h("div", { "aria-live": "polite" });
+    async function guardar() {
+      msg.replaceChildren();
+      const hours = [0, 1, 2, 3, 4, 5, 6].map(() => null);
+      for (const f of filas) {
+        if (f.abierto.checked && (!f.de.value || !f.a.value || f.a.value <= f.de.value)) return msg.append(h("div", { class: "note" }, "Revisa el horario del " + DIAS[f.d] + ": la hora de inicio debe ser antes que la de cierre."));
+        hours[f.d] = { open: f.abierto.checked, start: f.de.value || "08:00", end: f.a.value || "18:00" };
+      }
+      await run(Store.save("settings", { ...settings(), hours, id: "main" }), "Horario guardado", msg);
+    }
+    return h("div", { class: "card stack" }, h("h3", {}, "Horario de trabajo"),
+      h("p", { class: "muted small", style: "margin:0" }, "Fuera de este horario la agenda se ve sombreada y te avisa al agendar, pero sí te deja guardar."),
+      h("div", { class: "horario" }, filas.map((f) => f.el)), msg,
+      h("div", {}, busyBtn({ class: "btn" }, "Guardar horario", guardar)));
   }
   function clientList() {
     const q = S.clientQuery.trim().toLowerCase();
@@ -757,7 +854,7 @@
     Store.init(db);
     S.loading = false;
     if (!db) return render();
-    const map = { clients: "clients", services: "services", appointments: "appts", promos: "promos", settings: "settings" };
+    const map = { clients: "clients", services: "services", appointments: "appts", promos: "promos", settings: "settings", blocks: "blocks" };
     for (const [col, key] of Object.entries(map)) {
       Store.subscribe(col, (docs) => {
         S[key] = key === "settings" ? Object.fromEntries(docs.map((d) => [d.id, d])) : docs;

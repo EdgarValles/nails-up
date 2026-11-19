@@ -4,7 +4,7 @@ const path = require("node:path");
 const { createAuth } = require("./auth.js");
 const { buildCsp, securityHeaders } = require("./security.js");
 
-const COLLECTIONS = new Set(["clients", "services", "appointments", "promos", "settings"]);
+const COLLECTIONS = new Set(["clients", "services", "appointments", "promos", "settings", "blocks"]);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 const DIST = path.join(__dirname, "..", "dist");

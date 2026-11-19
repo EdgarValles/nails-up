@@ -144,6 +144,17 @@ a { color: inherit; }
 .appt.cobrada .quien { color: var(--tinta-suave); }
 .cal.semana .appt .que, .cal.semana .appt .chip { display: none; }
 @media (max-width: 700px) { .cal.semana .appt .quien { font-size: .72rem; } .cal.semana .appt { padding: 3px 4px 3px 7px; } .cal.semana .appt .t { display: none; } }
+.fuera { position: absolute; left: 0; right: 0; top: calc(var(--t) * var(--ppm)); height: calc(var(--h) * var(--ppm)); background: color-mix(in srgb, var(--tinta) 6%, transparent); pointer-events: none; display: grid; justify-items: center; align-content: start; padding-top: 10px; font-size: .78rem; color: var(--tinta-suave); }
+.bloqueo { position: absolute; left: 3px; right: 3px; top: calc(var(--t) * var(--ppm) + 1px); height: calc(var(--h) * var(--ppm) - 2px); display: flex; flex-direction: column; align-items: flex-start; gap: 1px; overflow: hidden; padding: 4px 8px; border: 1px dashed #B9AEB8; border-radius: 8px; text-align: left; cursor: pointer; color: var(--tinta-suave);
+  background: repeating-linear-gradient(135deg, #EFEAEE 0 6px, #F7F4F6 6px 12px); }
+.appt { z-index: 1; }
+.bloqueo.corto { flex-direction: row; align-items: center; gap: 8px; padding-top: 0; padding-bottom: 0; }
+.bloqueo .quien { font-weight: 650; font-size: .82rem; }
+.bloqueo .t { font-size: .74rem; }
+.cal-head .descanso { font-size: .68rem; color: var(--tinta-suave); }
+.horario { display: grid; gap: 8px; }
+.hora-dia { display: grid; grid-template-columns: minmax(8rem, 1fr) 1fr 1fr; gap: 8px; align-items: center; }
+@media (max-width: 420px) { .hora-dia { grid-template-columns: 1fr 1fr; } .hora-dia .check { grid-column: 1 / -1; } }
 .now { position: absolute; left: 0; right: 0; top: calc(var(--t) * var(--ppm)); height: 2px; background: var(--malva); z-index: 2; pointer-events: none; }
 .now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--malva); }
 

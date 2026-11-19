@@ -302,3 +302,12 @@ test("trustProxy 1 toma solo la IP que agregó el proxy, no la que inventa el cl
 test("trustProxy 0 ignora X-Forwarded-For", async () => {
   assert.strictEqual(await ipRegistrada(0), "127.0.0.1");
 });
+
+test("la colección blocks se guarda y se lista", async () => {
+  const s = await start();
+  const b = { date: "2026-11-23", endDate: "2026-11-23", start: "14:00", end: "15:00", allDay: false, reason: "Comida" };
+  assert.strictEqual((await s.fetch(s.base + "/api/blocks/b1", { method: "PUT", headers: J, body: JSON.stringify(b) })).status, 204);
+  const list = await (await s.fetch(s.base + "/api/blocks")).json();
+  assert.deepStrictEqual(list, [{ id: "b1", ...b }]);
+  await s.close();
+});
