@@ -693,8 +693,8 @@
   function serviceList() {
     if (!S.services.length) return h("div", { class: "empty" }, h("p", {}, "Aún no hay servicios. Agrega el primero."), h("button", { class: "btn", onclick: () => openSheet(() => serviceForm()) }, "Nuevo servicio"));
     return h("div", { class: "list" }, S.services.slice().sort((a, b) => a.name.localeCompare(b.name)).map((v) => h("button", { class: "item", onclick: () => openSheet(() => serviceForm(v.id)) },
-      h("span", {}, h("div", { class: "name" }, h("span", { class: "dotc", style: "background:" + (v.color || TONES[0]) }), v.name), h("div", { class: "muted small" }, v.durationMin + " min")),
-      h("span", { class: "side-r" }, v.active === false && h("span", { class: "tag" }, "Inactivo"), v.price ? h("span", { class: "name" }, L.formatMXN(v.price)) : h("span", { class: "muted small" }, "Sin precio")))));
+      h("span", {}, h("div", { class: "name" }, h("span", { class: "dotc", style: "background:" + (v.color || TONES[0]) }), v.name), h("div", { class: "muted small" }, v.durationMin + " min" + (v.perUnit ? " por " + v.unitLabel : ""))),
+      h("span", { class: "side-r" }, v.active === false && h("span", { class: "tag" }, "Inactivo"), v.price ? h("span", { class: "name" }, L.formatMXN(v.price) + (v.perUnit ? " por " + v.unitLabel : "")) : h("span", { class: "muted small" }, "Sin precio")))));
   }
   function serviceForm(id) {
     const v = id ? serviceOf(id) : { name: "", price: "", durationMin: 45, color: TONES[S.services.length % TONES.length], active: true };
@@ -703,6 +703,20 @@
     const palette = h("div", { class: "colors", role: "group", "aria-label": "Color del esmalte" });
     const paint2 = () => palette.replaceChildren(...TONES.map((t) => h("button", { style: "background:" + t, "aria-label": "Color " + t, "aria-pressed": String(t === color), onclick: () => { color = t; paint2(); } })));
     paint2();
+    // cómo se cobra: único (una vez) o por unidad (por ejemplo, por uña)
+    const opcionCobro = (value, text) => h("label", { class: "check" }, h("input", { type: "radio", name: "s-cobro", value, checked: (value === "unidad") === !!v.perUnit }), text);
+    const unidad = h("input", { id: "s-unit", autocomplete: "off", placeholder: "uña", value: v.unitLabel || "" });
+    const maximo = h("input", { id: "s-max", type: "number", min: "2", max: "99", step: "1", inputmode: "numeric", value: v.maxUnits || 10 });
+    const camposUnidad = h("div", { class: "grid2", hidden: !v.perUnit }, h("label", {}, "Unidad", unidad), h("label", {}, "Máximo", maximo));
+    const lblPrecio = h("span", {}), lblDur = h("span", {});
+    const porUnidad = () => !!root.querySelector('input[name="s-cobro"][value="unidad"]:checked');
+    const pintaEtiquetas = () => {
+      const u = unidad.value.trim() || "unidad";
+      const pu = camposUnidad.hidden ? false : true;
+      lblPrecio.textContent = pu ? "Precio por " + u : "Precio";
+      lblDur.textContent = pu ? "Duración por " + u + " (min)" : "Duración (min)";
+    };
+    unidad.addEventListener("input", pintaEtiquetas);
     let docId = id || "";
     async function save() {
       msg.replaceChildren();
@@ -712,11 +726,21 @@
       const doc = { ...(id ? v : {}), id: docId, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
       const rw = Math.floor(Number(root.querySelector("#s-return").value));
       if (rw > 0) doc.returnWeeks = rw; else delete doc.returnWeeks;
+      if (porUnidad()) {
+        const u = unidad.value.trim(), mx = Number(maximo.value);
+        if (!u) return msg.append(h("div", { class: "note" }, "Escribe la unidad (por ejemplo, uña)."));
+        if (!Number.isInteger(mx) || mx < 2 || mx > 99) return msg.append(h("div", { class: "note" }, "El máximo debe ser un número de 2 a 99."));
+        Object.assign(doc, { perUnit: true, unitLabel: u, maxUnits: mx });
+      } else { delete doc.perUnit; delete doc.unitLabel; delete doc.maxUnits; }
       if (await run(Store.save("services", doc), "Servicio guardado", msg)) closeSheet();
     }
+    lblPrecio.textContent = v.perUnit ? "Precio por " + v.unitLabel : "Precio";
+    lblDur.textContent = v.perUnit ? "Duración por " + v.unitLabel + " (min)" : "Duración (min)";
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar servicio" : "Nuevo servicio"),
       h("label", {}, "Nombre", h("input", { id: "s-name", autocomplete: "off", value: v.name })),
-      h("div", { class: "grid2" }, h("label", {}, "Precio", h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, "Duración (min)", h("input", { id: "s-dur", type: "number", min: "5", step: "5", value: v.durationMin }))),
+      h("fieldset", { class: "stack opciones", onchange: () => { camposUnidad.hidden = !porUnidad(); pintaEtiquetas(); } }, h("legend", {}, "Cómo se cobra"), opcionCobro("unico", "Único"), opcionCobro("unidad", "Por unidad")),
+      camposUnidad,
+      h("div", { class: "grid2" }, h("label", {}, lblPrecio, h("input", { id: "s-price", type: "number", min: "0", inputmode: "decimal", value: v.price || "" })), h("label", {}, lblDur, h("input", { id: "s-dur", type: "number", min: "1", step: "1", value: v.durationMin }))),
       h("label", {}, "Vuelve cada (semanas)", h("input", { id: "s-return", type: "number", min: "1", step: "1", inputmode: "numeric", placeholder: "Opcional", value: v.returnWeeks || "" })),
       h("div", {}, h("div", { class: "small", style: "font-weight:600;margin-bottom:6px" }, "Color en la agenda"), palette),
       h("label", { class: "check" }, h("input", { id: "s-active", type: "checkbox", checked: active }), "Disponible para nuevas citas"),
