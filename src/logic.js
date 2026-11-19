@@ -107,6 +107,39 @@
     return p ? clients.find((c) => api.normalizePhone(c.phone) === p) : undefined;
   };
 
+  // las canceladas de antes de guardar el tipo cuentan como cancelación con aviso
+  api.cancelKind = (a) => (a.status !== "cancelada" ? null : a.cancelKind === "no_llego" ? "no_llego" : "aviso");
+
+  api.cancelStats = (clientId, appointments) => {
+    const r = { aviso: 0, noLlego: 0 };
+    for (const a of appointments) {
+      if (a.clientId !== clientId) continue;
+      const k = api.cancelKind(a);
+      if (k === "aviso") r.aviso++;
+      else if (k === "no_llego") r.noLlego++;
+    }
+    return r;
+  };
+
+  // aviso cuando hay 2 o más cancelaciones entre sus últimas 5 citas cerradas (cobradas o canceladas)
+  api.cancelTendency = (clientId, appointments) => {
+    const recientes = appointments
+      .filter((a) => a.clientId === clientId && (a.status === "cobrada" || a.status === "cancelada"))
+      .sort((a, b) => (a.start < b.start ? 1 : a.start > b.start ? -1 : 0))
+      .slice(0, 5);
+    const canceladas = recientes.filter((a) => a.status === "cancelada");
+    if (canceladas.length < 2) return null;
+    return { total: recientes.length, canceladas: canceladas.length, noLlego: canceladas.filter((a) => api.cancelKind(a) === "no_llego").length };
+  };
+
+  api.canDeleteClient = (clientId, appointments) => {
+    const suyas = appointments.filter((a) => a.clientId === clientId);
+    const pendientes = suyas.filter((a) => a.status === "pendiente").length;
+    return pendientes ? { ok: false, pendientes } : { ok: true, historial: suyas.length };
+  };
+
+  api.canDeleteAppointment = (a) => a.status !== "cobrada";
+
   root.NailsLogic = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
