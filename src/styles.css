@@ -286,6 +286,8 @@ input.svc-price { width: 6.5rem; min-height: 36px; padding: 6px 8px; }
 .dl { margin: 0; display: grid; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
 .dl > div { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--linea-suave); }
 .dl > div:last-child { border-bottom: 0; }
+.svc-detalle { display: grid; gap: 4px; }
+.svc-detalle .row { flex-wrap: nowrap; gap: 8px; }
 .dl dt { color: var(--tinta-suave); font-size: .86rem; }
 .dl dd { margin: 0; }
 .btn.peligro { color: var(--peligro); border-color: transparent; }

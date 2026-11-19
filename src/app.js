@@ -65,6 +65,8 @@
   const hhmm = (min) => String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
   const endOf = (a) => { const m = Number(a.start.slice(11, 13)) * 60 + Number(a.start.slice(14, 16)) + (Number(a.durationMin) || 30); return hhmm(m % 1440); };
   const timeOf = (a) => a.start.slice(11, 16);
+  // "Manicure en gel + 2": funciona igual con citas viejas de un solo servicio
+  const resumen = (a) => L.servicesSummary(L.apptServices(a)) || "Servicio";
   const byStart = (a, b) => a.start.localeCompare(b.start);
   const clientOf = (id) => S.clients.find((c) => c.id === id);
   const serviceOf = (id) => S.services.find((s) => s.id === id);
@@ -217,11 +219,11 @@
     const color = a.serviceColor || (serviceOf(a.serviceId) || {}).color || TONES[0];
     const name = c ? c.name : "Clienta eliminada";
     return h("button", { class: "appt " + a.status + (height <= 30 ? " corto" : "") + (lanes > 1 ? " angosto" : ""), style: "--c:" + color + ";--t:" + top + ";--h:" + height + ";--lane:" + lane + ";--lanes:" + lanes,
-      "aria-label": timeOf(a) + " a " + endOf(a) + ", " + name + ", " + (a.serviceName || "Servicio") + ", " + (STATUS[a.status] || a.status),
+      "aria-label": timeOf(a) + " a " + endOf(a) + ", " + name + ", " + resumen(a) + ", " + (STATUS[a.status] || a.status),
       onclick: () => openSheet(() => apptDetail(a.id)) },
       h("span", { class: "t" }, timeOf(a), h("span", { class: "fin" }, "–" + endOf(a))),
       h("span", { class: "quien" }, name),
-      height >= 45 && h("span", { class: "que" }, a.serviceName || "Servicio"),
+      height >= 45 && h("span", { class: "que" }, resumen(a)),
       a.status !== "pendiente" && chip(a.status));
   }
   // panel del día: cuánto hay, cuánto se cobró y quién sigue
@@ -240,7 +242,7 @@
         h("div", { class: "kpi" }, h("b", {}, pend.length), h("span", {}, "por cobrar"))),
       h("div", { class: "next" }, h("h3", {}, isToday ? "Siguientes" : "Pendientes"),
         next.length ? next.map((a) => { const c = clientOf(a.clientId); return h("button", { onclick: () => openSheet(() => apptDetail(a.id)) },
-          h("span", { class: "t" }, timeOf(a)), h("span", {}, h("div", {}, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName))); })
+          h("span", { class: "t" }, timeOf(a)), h("span", {}, h("div", {}, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, resumen(a)))); })
           : h("p", { class: "muted small", style: "margin:4px 0 0" }, list.length ? "No quedan citas pendientes." : "Sin citas. Toca un horario libre para agendar.")));
   }
   // renglón de cita para listas (por cobrar, historial)
@@ -249,7 +251,7 @@
     return h("button", { class: "item row-appt", style: "--c:" + (a.serviceColor || TONES[0]), onclick: () => openSheet(() => apptDetail(a.id)) },
       h("span", { class: "t" }, dmy(a.start.slice(0, 10)).slice(0, 5), h("br"), timeOf(a)),
       h("span", { class: "bar" }),
-      h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName || "Servicio")),
+      h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, resumen(a))),
       chip(a.status));
   }
 
@@ -383,10 +385,12 @@
     return h("div", { class: "stack detalle" },
       h("div", { class: "row between" }, h("h2", {}, c ? c.name : "Clienta eliminada"), chip(a.status)),
       h("dl", { class: "dl" },
-        fila("Servicio", h("span", {}, h("span", { class: "dotc", style: "background:" + (a.serviceColor || TONES[0]) }), a.serviceName || "Servicio")),
+        fila("Servicios", h("div", { class: "svc-detalle" }, L.apptServices(a).map((l) => h("div", { class: "row between" },
+          h("span", {}, h("span", { class: "dotc", style: "background:" + (l.color || TONES[0]) }), l.name),
+          l.price ? h("span", {}, L.formatMXN(l.price)) : null)))),
         fila("Fecha", fullDate(a.start.slice(0, 10)).replace(/^./, (x) => x.toUpperCase())),
         fila("Hora", timeOf(a) + " a " + endOf(a) + " (" + a.durationMin + " min)"),
-        a.status === "cobrada" ? fila("Cobrado", L.formatMXN(a.total) + " · " + a.method) : a.price ? fila("Precio", L.formatMXN(a.price)) : null,
+        a.status === "cobrada" ? fila("Cobrado", L.formatMXN(a.total) + " · " + a.method) : null,
         a.advance ? fila("Anticipo", L.formatMXN(a.advance)) : null,
         a.notes ? fila("Notas", a.notes) : null,
         L.cancelKind(a) ? fila("Cancelación", L.cancelKind(a) === "no_llego" ? "No llegó" : "Canceló con aviso") : null,
@@ -480,7 +484,7 @@
         h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")),
       h("h3", {}, "Historial"),
       hist.length ? h("div", { class: "list" }, hist.map((a) => h("div", { class: "item", style: "cursor:default" },
-        h("span", {}, h("div", { class: "name" }, a.serviceName), h("div", { class: "muted small" }, dmy(a.start.slice(0, 10)) + " " + timeOf(a)),
+        h("span", {}, h("div", { class: "name" }, resumen(a)), h("div", { class: "muted small" }, dmy(a.start.slice(0, 10)) + " " + timeOf(a)),
           L.cancelKind(a) && a.cancelReason ? h("div", { class: "muted small" }, a.cancelReason) : null),
         h("span", { class: "tag" }, a.status === "cobrada" ? L.formatMXN(a.total) : L.cancelKind(a) === "no_llego" ? "No llegó" : L.cancelKind(a) ? "Canceló" : a.status))))
         : h("p", { class: "muted" }, "Todavía no tiene citas."),
@@ -627,7 +631,7 @@
       pend.length ? h("div", { class: "list" }, pend.map(apptRow)) : h("div", { class: "empty" }, h("p", {}, "No hay citas por cobrar. Las citas de hoy y de días pasados aparecen aquí.")),
       h("h2", { class: "section-title" }, "Cobros recientes"),
       done.length ? h("div", { class: "list" }, done.map((a) => { const c = clientOf(a.clientId); return h("button", { class: "item", onclick: () => openSheet(() => apptDetail(a.id)) },
-        h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, a.serviceName + " · " + dmy(a.paidAt || a.start.slice(0, 10)) + " · " + a.method + (a.discountAmount ? " · descuento " + L.formatMXN(a.discountAmount) : ""))),
+        h("span", {}, h("div", { class: "name" }, c ? c.name : "Clienta eliminada"), h("div", { class: "muted small" }, resumen(a) + " · " + dmy(a.paidAt || a.start.slice(0, 10)) + " · " + a.method + (a.discountAmount ? " · descuento " + L.formatMXN(a.discountAmount) : ""))),
         h("span", { class: "name" }, L.formatMXN(a.total))); }))
         : h("p", { class: "muted" }, "Todavía no hay cobros registrados."));
   }
