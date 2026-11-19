@@ -140,6 +140,37 @@
 
   api.canDeleteAppointment = (a) => a.status !== "cobrada";
 
+  /* ---------- varios servicios por cita ---------- */
+  // una línea es una copia del servicio del catálogo: si el catálogo cambia, la cita conserva lo suyo
+  api.serviceLine = (svc) => ({
+    serviceId: svc.id, name: svc.name, color: svc.color,
+    price: Number(svc.price) || 0, durationMin: Number(svc.durationMin) || 0,
+  });
+
+  // las citas de antes tienen un solo servicio en serviceId/serviceName/serviceColor/price
+  api.apptServices = (a) => {
+    if (Array.isArray(a.services) && a.services.length) return a.services.map((l) => ({ ...l }));
+    if (!a.serviceId && !a.serviceName) return [];
+    return [{ serviceId: a.serviceId, name: a.serviceName || "Servicio", color: a.serviceColor, price: Number(a.price) || 0, durationMin: Number(a.durationMin) || 0 }];
+  };
+
+  api.servicesTotals = (lines) => lines.reduce(
+    (t, l) => ({ price: round2(t.price + (Number(l.price) || 0)), durationMin: t.durationMin + (Number(l.durationMin) || 0) }),
+    { price: 0, durationMin: 0 });
+
+  api.servicesSummary = (lines) => (!lines.length ? "" : lines[0].name + (lines.length > 1 ? " + " + (lines.length - 1) : ""));
+
+  // además de la lista, los campos de antes como resumen, para lo que aún los lea
+  api.withServices = (appt, lines) => {
+    const first = lines[0] || {};
+    return { ...appt, services: lines, serviceId: first.serviceId, serviceColor: first.color, serviceName: api.servicesSummary(lines), price: api.servicesTotals(lines).price };
+  };
+
+  api.formatDuration = (min) => {
+    const h = Math.floor(min / 60), m = min % 60;
+    return !h ? m + " min" : h + " h" + (m ? " " + m + " min" : "");
+  };
+
   root.NailsLogic = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
