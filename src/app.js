@@ -785,7 +785,7 @@
     const cobradas = L.apptServices(doc);
     const weeks = L.suggestedWeeks(cobradas, S.services);
     const siguiente = () => {
-      const lines = cobradas.map((l) => { const v = serviceOf(l.serviceId); return v ? L.serviceLine(v) : l; });
+      const lines = L.nextLines(cobradas, S.services);
       openSheet(() => apptForm({ date: L.nextVisitDate({ today: todayKey(), weeks, hours: hoursSetting() }), time: timeOf(doc), clientId: doc.clientId, lines,
         hint: "Sugerida: en " + weeks + (weeks === 1 ? " semana" : " semanas") }));
     };

@@ -43,3 +43,17 @@ test("monthReport suma unidades por servicio", () => {
   assert.deepStrictEqual(r.byService.find((x) => x.name === "Decoración"), { name: "Decoración", count: 6, amount: 180, unitLabel: "uña" });
   assert.deepStrictEqual(r.byService.find((x) => x.name === "Gel"), { name: "Gel", count: 1, amount: 350 });
 });
+
+test("nextLines repite los servicios cobrados con precio de catálogo y la misma cantidad", () => {
+  const services = [{ ...deco, price: 35 }, { id: "g", name: "Gel", color: "#0c0", price: 400, durationMin: 45 }];
+  const cobradas = [{ ...gel, price: 300 }, { ...L.serviceLine(deco), price: 25, qty: 4 }, { serviceId: "borrado", name: "Viejo", price: 50, durationMin: 10 }];
+  const r = L.nextLines(cobradas, services);
+  assert.strictEqual(r[0].price, 400);
+  assert.strictEqual(r[1].price, 35);
+  assert.strictEqual(r[1].qty, 4);
+  assert.strictEqual(r[2].name, "Viejo");
+  // si el máximo bajó en el catálogo, no lo pasa
+  assert.strictEqual(L.nextLines([{ ...L.serviceLine(deco), qty: 9 }], [{ ...deco, maxUnits: 5 }])[0].qty, 5);
+  // si ya no es por unidad, vale 1
+  assert.strictEqual(L.nextLines([{ ...L.serviceLine(deco), qty: 4 }], [{ ...deco, perUnit: false }])[0].qty, 1);
+});

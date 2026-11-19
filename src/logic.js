@@ -155,6 +155,14 @@
     return { price: round2((Number(l.price) || 0) * qty), durationMin: (Number(l.durationMin) || 0) * qty, qty };
   };
 
+  // para la siguiente cita: mismos servicios con precio de catálogo actual y la misma cantidad (sin pasar del máximo)
+  api.nextLines = (lines, services) => lines.map((l) => {
+    const v = services.find((x) => x.id === l.serviceId);
+    if (!v) return { ...l };
+    const base = api.serviceLine(v);
+    return v.perUnit ? { ...base, qty: Math.min(api.lineTotal(l).qty, base.maxUnits) } : base;
+  });
+
   api.unitText = (n, label) => n + " " + (n === 1 ? label : label + (/[aeiouáéíóú]$/i.test(label) ? "s" : "es"));
 
   // las citas de antes tienen un solo servicio en serviceId/serviceName/serviceColor/price
