@@ -228,6 +228,64 @@
   api.reminderMessage = (clientName, time) =>
     "Hola " + String(clientName || "").trim().split(" ")[0] + ", te recuerdo tu cita mañana a las " + time + " en Nails Up. ¿Me confirmas, por favor?";
 
+  /* ---------- ingresos y reportes ---------- */
+  const paidDay = (a) => a.paidAt || a.start.slice(0, 10);
+  const isRetained = (a) => a.status === "cancelada" && a.advanceKept === true && Number(a.advance) > 0;
+  const prevMonth = (m) => {
+    const y = Number(m.slice(0, 4)), n = Number(m.slice(5, 7));
+    return n === 1 ? (y - 1) + "-12" : y + "-" + String(n - 1).padStart(2, "0");
+  };
+  // ingreso = cobros (por fecha de cobro) + anticipos que se quedaron de citas canceladas (por fecha de cancelación)
+  const incomeWhere = (appts, match) => round2(
+    appts.filter((a) => a.status === "cobrada" && match(paidDay(a))).reduce((n, a) => n + (Number(a.total) || 0), 0) +
+    appts.filter((a) => isRetained(a) && a.cancelledAt && match(a.cancelledAt)).reduce((n, a) => n + Number(a.advance), 0));
+
+  api.incomeOn = (appts, dateKey) => incomeWhere(appts, (d) => d === dateKey);
+
+  api.monthReport = ({ appts, clients, month }) => {
+    const inMonth = (d) => d.slice(0, 7) === month;
+    const income = incomeWhere(appts, inMonth);
+    const prevIncome = incomeWhere(appts, (d) => d.slice(0, 7) === prevMonth(month));
+    const paid = appts.filter((a) => a.status === "cobrada" && inMonth(paidDay(a)));
+    const paidSum = round2(paid.reduce((n, a) => n + (Number(a.total) || 0), 0));
+    const retainedList = appts.filter((a) => isRetained(a) && a.cancelledAt && inMonth(a.cancelledAt));
+    const retained = { count: retainedList.length, amount: round2(retainedList.reduce((n, a) => n + Number(a.advance), 0)) };
+
+    const svc = new Map();
+    for (const a of paid) for (const l of api.apptServices(a)) {
+      const cur = svc.get(l.name) || { name: l.name, count: 0, amount: 0 };
+      cur.count++; cur.amount = round2(cur.amount + (Number(l.price) || 0));
+      svc.set(l.name, cur);
+    }
+    const met = new Map();
+    for (const a of paid) met.set(a.method, round2((met.get(a.method) || 0) + (Number(a.total) || 0)));
+    const byMethod = [...met].map(([method, amount]) => ({ method, amount })).sort((x, y) => y.amount - x.amount);
+    if (retained.count) byMethod.push({ method: "retenidos", amount: retained.amount });
+
+    const cli = new Map();
+    for (const a of paid) {
+      const cur = cli.get(a.clientId) || { clientId: a.clientId, visits: 0, amount: 0 };
+      cur.visits++; cur.amount = round2(cur.amount + (Number(a.total) || 0));
+      cli.set(a.clientId, cur);
+    }
+    const topClients = [...cli.values()].sort((x, y) => y.amount - x.amount).slice(0, 5)
+      .map((c) => ({ clientId: c.clientId, name: (clients.find((x) => x.id === c.clientId) || {}).name || "Clienta eliminada", visits: c.visits, amount: c.amount }));
+
+    const closedList = appts.filter((a) => inMonth(a.start.slice(0, 10)) && (a.status === "cobrada" || a.status === "cancelada"));
+    const aviso = closedList.filter((a) => api.cancelKind(a) === "aviso").length;
+    const noLlego = closedList.filter((a) => api.cancelKind(a) === "no_llego").length;
+    const pct = (n) => (closedList.length ? Math.round((n / closedList.length) * 100) : 0);
+
+    return {
+      income, prevIncome, changePct: prevIncome ? Math.round(((income - prevIncome) / prevIncome) * 100) : null,
+      paidCount: paid.length, avgTicket: paid.length ? round2(paidSum / paid.length) : 0,
+      byService: [...svc.values()].sort((x, y) => y.amount - x.amount),
+      byMethod, topClients,
+      cancel: { closed: closedList.length, aviso, noLlego, avisoPct: pct(aviso), noLlegoPct: pct(noLlego) },
+      retained,
+    };
+  };
+
   root.NailsLogic = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
