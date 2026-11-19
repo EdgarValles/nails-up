@@ -142,10 +142,20 @@
 
   /* ---------- varios servicios por cita ---------- */
   // una línea es una copia del servicio del catálogo: si el catálogo cambia, la cita conserva lo suyo
+  // precio y duración son por unidad; qty multiplica (las líneas viejas no tienen qty y valen 1)
   api.serviceLine = (svc) => ({
     serviceId: svc.id, name: svc.name, color: svc.color,
-    price: Number(svc.price) || 0, durationMin: Number(svc.durationMin) || 0,
+    price: Number(svc.price) || 0, durationMin: Number(svc.durationMin) || 0, qty: 1,
+    ...(svc.perUnit ? { unitLabel: svc.unitLabel, maxUnits: Number(svc.maxUnits) || 10 } : {}),
   });
+
+  api.lineTotal = (l) => {
+    const q = Math.floor(Number(l.qty));
+    const qty = q >= 1 ? q : 1;
+    return { price: round2((Number(l.price) || 0) * qty), durationMin: (Number(l.durationMin) || 0) * qty, qty };
+  };
+
+  api.unitText = (n, label) => n + " " + (n === 1 ? label : label + (/[aeiouáéíóú]$/i.test(label) ? "s" : "es"));
 
   // las citas de antes tienen un solo servicio en serviceId/serviceName/serviceColor/price
   api.apptServices = (a) => {
@@ -156,9 +166,10 @@
     return [{ serviceId: a.serviceId, name: a.serviceName || "Servicio", color: a.serviceColor, price: cobrado ? a.subtotal : Number(a.price) || 0, durationMin: Number(a.durationMin) || 0 }];
   };
 
-  api.servicesTotals = (lines) => lines.reduce(
-    (t, l) => ({ price: round2(t.price + (Number(l.price) || 0)), durationMin: t.durationMin + (Number(l.durationMin) || 0) }),
-    { price: 0, durationMin: 0 });
+  api.servicesTotals = (lines) => lines.reduce((t, l) => {
+    const x = api.lineTotal(l);
+    return { price: round2(t.price + x.price), durationMin: t.durationMin + x.durationMin };
+  }, { price: 0, durationMin: 0 });
 
   api.servicesSummary = (lines) => (!lines.length ? "" : lines[0].name + (lines.length > 1 ? " + " + (lines.length - 1) : ""));
 
@@ -254,7 +265,9 @@
     const svc = new Map();
     for (const a of paid) for (const l of api.apptServices(a)) {
       const cur = svc.get(l.name) || { name: l.name, count: 0, amount: 0 };
-      cur.count++; cur.amount = round2(cur.amount + (Number(l.price) || 0));
+      const x = api.lineTotal(l);
+      cur.count += x.qty; cur.amount = round2(cur.amount + x.price);
+      if (l.unitLabel) cur.unitLabel = l.unitLabel;
       svc.set(l.name, cur);
     }
     const met = new Map();

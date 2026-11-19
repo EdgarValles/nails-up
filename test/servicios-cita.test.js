@@ -6,7 +6,7 @@ const gel = { serviceId: "s1", name: "Gel", color: "#c00", price: 350, durationM
 const diseno = { serviceId: "s2", name: "Diseño", color: "#0c0", price: 120, durationMin: 30 };
 
 test("serviceLine copia el servicio del catálogo y pone 0 si falta el precio", () => {
-  assert.deepStrictEqual(L.serviceLine({ id: "s1", name: "Gel", color: "#c00", price: 350, durationMin: 45 }), gel);
+  assert.deepStrictEqual(L.serviceLine({ id: "s1", name: "Gel", color: "#c00", price: 350, durationMin: 45 }), { ...gel, qty: 1 });
   assert.strictEqual(L.serviceLine({ id: "s1", name: "Gel", color: "#c00", durationMin: 45 }).price, 0);
 });
 
