@@ -200,7 +200,15 @@ button.item:hover { background: var(--fondo); }
 
 .big { font-family: var(--display); font-size: 1.8rem; font-weight: 650; letter-spacing: -0.02em; }
 .stat { display: grid; gap: 4px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.mesnav { display: flex; align-items: center; gap: 12px; margin: 14px 0 2px; }
+.mesnav h2 { margin: 0; min-width: 11rem; text-align: center; }
+.reportes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.tabla { display: grid; }
+.tabla-fila { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--linea-suave); }
+.tabla-fila:last-child { border-bottom: 0; }
+.tabla-fila > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabla-fila .num { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .tag { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--lila-tenue); font-size: .78rem; font-weight: 600; }
 .dotc { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -1px; margin-right: 8px; }
 .colors { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -18,7 +18,7 @@
     despues: ["M9.5 6l6 6-6 6"],
     buscar: ["M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4"],
   };
-  const SECCIONES = [["agenda", "Agenda"], ["clientas", "Clientas"], ["servicios", "Servicios"], ["cobros", "Cobros"], ["promos", "Promociones"], ["resumen", "Resumen"]];
+  const SECCIONES = [["agenda", "Agenda"], ["clientas", "Clientas"], ["servicios", "Servicios"], ["cobros", "Cobros"], ["promos", "Promociones"], ["resumen", "Reportes"]];
 
   const S = {
     tab: "agenda", view: "dia", date: L.dateKey(new Date()),
@@ -863,18 +863,45 @@
   }
 
   /* ---------- resumen ---------- */
+  const mesNombre = (m) => (MESES[Number(m.slice(5, 7)) - 1] + " de " + m.slice(0, 4)).replace(/^./, (x) => x.toUpperCase());
+  const mesMover = (m, n) => { const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+  const METODOS = { efectivo: "Efectivo", transferencia: "Transferencia", retenidos: "Anticipos retenidos" };
   function screenResumen() {
-    const t = todayKey(), month = t.slice(0, 7);
-    const paid = S.appts.filter((a) => a.status === "cobrada");
-    const day = (a) => a.paidAt || a.start.slice(0, 10);
-    const sum = (arr) => arr.reduce((n, a) => n + (a.total || 0), 0);
+    const t = todayKey();
+    const month = S.reportMonth || t.slice(0, 7);
+    const r = L.monthReport({ appts: S.appts, clients: S.clients, month });
     const pendientes = apptsOn(t).filter((a) => a.status === "pendiente").length;
     const activas = S.promos.filter(promoActiveToday);
-    return h("div", { class: "stack" }, pageHead("Resumen"),
+    const stat = (label, value, extra) => h("div", { class: "card stat" }, h("span", { class: "muted small" }, label), h("span", { class: "big" }, value), extra || null);
+    const prev = MESES[Number(mesMover(month, -1).slice(5, 7)) - 1];
+    const cambio = r.changePct === null ? "—" : (r.changePct >= 0 ? "+" : "−") + Math.abs(r.changePct) + "% que " + prev;
+    const tabla = (titulo, filas, nota) => h("section", { class: "card stack" }, h("h3", {}, titulo), nota ? h("p", { class: "muted small", style: "margin:0" }, nota) : null,
+      h("div", { class: "tabla" }, filas));
+    const fila = (a, b, c) => h("div", { class: "tabla-fila" }, h("span", {}, a), h("span", { class: "muted small" }, b || ""), h("span", { class: "num" }, c));
+    const pct = (n, p) => n + " (" + p + "%)";
+    return h("div", { class: "stack" }, pageHead("Reportes"),
       h("div", { class: "stats" },
-        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos de hoy"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a) === t))))),
-        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Ingresos del mes"), h("span", { class: "big" }, L.formatMXN(sum(paid.filter((a) => day(a).startsWith(month)))))),
-        h("div", { class: "card stat" }, h("span", { class: "muted small" }, "Citas pendientes hoy"), h("span", { class: "big" }, pendientes))),
+        stat("Ingresos de hoy", L.formatMXN(L.incomeOn(S.appts, t))),
+        stat("Citas pendientes hoy", String(pendientes))),
+      h("div", { class: "mesnav" },
+        h("button", { class: "iconbtn", "aria-label": "Mes anterior", onclick: () => { S.reportMonth = mesMover(month, -1); render(); } }, icon("antes")),
+        h("h2", { "aria-live": "polite" }, mesNombre(month)),
+        h("button", { class: "iconbtn", "aria-label": "Mes siguiente", onclick: () => { S.reportMonth = mesMover(month, 1); render(); } }, icon("despues"))),
+      h("div", { class: "stats" },
+        stat("Ingresos del mes", L.formatMXN(r.income), h("span", { class: "muted small" }, cambio)),
+        stat("Citas cobradas", String(r.paidCount)),
+        stat("Ticket promedio", L.formatMXN(r.avgTicket))),
+      r.paidCount || r.retained.count ? h("div", { class: "reportes" },
+        r.byService.length ? tabla("Ventas por servicio", r.byService.map((x) => fila(x.name, x.count === 1 ? "1 vez" : x.count + " veces", L.formatMXN(x.amount))), "Montos antes de descuentos") : null,
+        tabla("Por método de pago", r.byMethod.map((x) => fila(METODOS[x.method] || x.method, "", L.formatMXN(x.amount)))),
+        r.topClients.length ? tabla("Mejores clientas", r.topClients.map((x) => fila(x.name, x.visits === 1 ? "1 visita" : x.visits + " visitas", L.formatMXN(x.amount)))) : null,
+        tabla("Cancelaciones", [
+          fila("Canceló con aviso", "", pct(r.cancel.aviso, r.cancel.avisoPct)),
+          fila("No llegó", "", pct(r.cancel.noLlego, r.cancel.noLlegoPct)),
+          fila("Citas cerradas", "", String(r.cancel.closed)),
+        ]),
+        r.retained.count ? tabla("Anticipos retenidos", [fila(r.retained.count === 1 ? "1 anticipo" : r.retained.count + " anticipos", "", L.formatMXN(r.retained.amount))]) : null)
+        : h("p", { class: "muted" }, "Sin cobros este mes."),
       h("h2", { class: "section-title" }, "Promociones activas hoy"),
       activas.length ? h("div", { class: "list" }, activas.map((p) => h("div", { class: "item", style: "cursor:default" }, h("span", { class: "name" }, p.name), h("span", { class: "tag" }, p.percent + "%"))))
         : h("p", { class: "muted" }, "No hay promociones activas hoy."));
