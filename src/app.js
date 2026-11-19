@@ -362,15 +362,34 @@
       ...S.services.filter((v) => v.active !== false).sort((a, b) => a.name.localeCompare(b.name))
         .map((v) => h("option", { value: v.id }, v.name + (v.price ? " · " + L.formatMXN(v.price) : ""))));
     function paintLines() {
-      box.replaceChildren(...(list.length ? list.map((l, i) => h("div", { class: "svc-line" },
-        h("span", { class: "dotc", style: "background:" + (l.color || TONES[0]) }),
-        h("span", { class: "svc-name" }, h("span", {}, l.name), h("span", { class: "muted small" }, L.formatDuration(l.durationMin))),
-        editablePrice
-          ? h("input", { class: "svc-price", type: "number", min: "0", inputmode: "decimal", placeholder: "0", "aria-label": "Precio de " + l.name, value: l.price || "",
-              oninput: (e) => { list[i].price = num(e.target.value); changed(); } })
-          : h("span", { class: "svc-price" }, l.price ? L.formatMXN(l.price) : ""),
-        h("button", { type: "button", class: "btn small ghost", "aria-label": "Quitar " + l.name, onclick: () => { list.splice(i, 1); paintLines(); changed(); } }, "Quitar")))
-        : [h("p", { class: "muted small" }, "Sin servicios todavía.")]));
+      box.replaceChildren(...(list.length ? list.map((l, i) => {
+        const unit = !!l.unitLabel, max = Number(l.maxUnits) || 99;
+        const t = L.lineTotal(l);
+        const sub = h("span", { class: "muted small" }), total = h("span", { class: "svc-price" });
+        // al escribir el precio solo se repinta esta línea, para no perder el cursor
+        const pintaLinea = () => {
+          const x = L.lineTotal(list[i]);
+          sub.textContent = (unit ? L.unitText(x.qty, l.unitLabel) + " × " + L.formatMXN(list[i].price) + " · " : "") + L.formatDuration(x.durationMin);
+          total.textContent = x.price ? L.formatMXN(x.price) : "";
+        };
+        pintaLinea();
+        const precio = editablePrice && h("input", { class: "svc-price", type: "number", min: "0", inputmode: "decimal", placeholder: "0",
+          "aria-label": (unit ? "Precio por " + l.unitLabel + " de " : "Precio de ") + l.name, value: l.price || "",
+          oninput: (e) => { list[i].price = num(e.target.value); pintaLinea(); changed(); } });
+        const plural = unit ? L.unitText(2, l.unitLabel).slice(2) : "";
+        const paso = (d) => { list[i].qty = Math.min(max, Math.max(1, t.qty + d)); paintLines(); changed(); };
+        const cant = unit && h("div", { class: "qty", role: "group", "aria-label": "Cantidad de " + plural },
+          h("button", { type: "button", class: "iconbtn", "aria-label": "Menos " + plural, disabled: t.qty <= 1, onclick: () => paso(-1) }, "−"),
+          h("span", { class: "qty-n" }, String(t.qty)),
+          h("button", { type: "button", class: "iconbtn", "aria-label": "Más " + plural, disabled: t.qty >= max, onclick: () => paso(1) }, "+"));
+        const enColumna = editablePrice && !unit ? precio : total;
+        return h("div", { class: "svc-line" },
+          h("span", { class: "dotc", style: "background:" + (l.color || TONES[0]) }),
+          h("span", { class: "svc-name" }, h("span", {}, l.name), sub),
+          enColumna,
+          h("button", { type: "button", class: "btn small ghost", "aria-label": "Quitar " + l.name, onclick: () => { list.splice(i, 1); paintLines(); changed(); } }, "Quitar"),
+          unit && h("div", { class: "svc-extra" }, cant, editablePrice && h("label", { class: "svc-precio-lbl" }, "Precio por " + l.unitLabel, precio)));
+      }) : [h("p", { class: "muted small" }, "Sin servicios todavía.")]));
     }
     add.addEventListener("change", () => {
       const v = serviceOf(add.value);
@@ -407,11 +426,17 @@
     const dur = h("input", { id: "f-dur", type: "number", min: "5", step: "5", value: f.durationMin });
     // la duración es la suma de los servicios hasta que la cambias a mano
     let durManual = !!existing && Number(existing.durationMin) !== L.servicesTotals(lines0).durationMin;
-    dur.addEventListener("input", () => { durManual = true; });
+    const sugerido = h("span", { class: "muted small", "aria-live": "polite" });
+    const usarSugerido = h("button", { type: "button", class: "btn small ghost", hidden: !durManual }, "Usar sugerido");
+    let sumaDur = 0;
+    dur.addEventListener("input", () => { durManual = true; usarSugerido.hidden = false; });
+    usarSugerido.addEventListener("click", () => { durManual = false; usarSugerido.hidden = true; dur.value = sumaDur || ""; });
     const estimado = h("div", { class: "muted small", "aria-live": "polite" });
     const pintaEstimado = (lines) => {
       const t = L.servicesTotals(lines);
       estimado.textContent = lines.length ? "Total estimado: " + (t.price ? L.formatMXN(t.price) + " · " : "") + L.formatDuration(t.durationMin) : "";
+      sumaDur = t.durationMin;
+      sugerido.textContent = lines.length ? "Sugerido: " + L.formatDuration(t.durationMin) + ", según los servicios" : "";
       if (!durManual) dur.value = lines.length ? t.durationMin : "";
     };
     const editor = servicesEditor({ lines: lines0, editablePrice: false, onChange: pintaEstimado });
@@ -469,7 +494,8 @@
       h("label", {}, "Clienta", clientSel), tendBox, newBox,
       h("div", { class: "stack campo" }, h("span", { class: "lbl" }, "Servicios"), editor.el, estimado),
       h("div", { class: "grid2" }, h("label", {}, "Fecha", h("input", { id: "f-date", type: "date", value: f.date }), !existing && init && init.hint && h("span", { class: "muted small", style: "font-weight:400" }, init.hint)), h("label", {}, "Hora", h("input", { id: "f-time", type: "time", value: f.time }))),
-      h("div", { class: "grid2" }, h("label", {}, "Duración (min)", dur), h("label", {}, "Anticipo recibido", h("input", { id: "f-adv", type: "number", min: "0", inputmode: "decimal", value: f.advance || "" }))),
+      h("label", {}, "Anticipo recibido", h("input", { id: "f-adv", type: "number", min: "0", inputmode: "decimal", value: f.advance || "" })),
+      h("div", { class: "stack campo" }, h("label", {}, "Duración (min)", dur), h("div", { class: "row sugerido" }, sugerido, usarSugerido)),
       h("label", {}, "Notas del diseño", h("textarea", { id: "f-notes" }, f.notes || "")),
       msg,
       h("div", { class: "row" }, busyBtn({ class: "btn" }, "Guardar cita", () => save(false)), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));

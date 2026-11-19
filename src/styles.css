@@ -235,6 +235,13 @@ textarea { min-height: 80px; resize: vertical; }
 .svc-price { text-align: right; font-variant-numeric: tabular-nums; }
 input.svc-price { width: 6.5rem; min-height: 36px; padding: 6px 8px; }
 .svc-editor p { margin: 0; }
+.svc-extra { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding-bottom: 4px; }
+.qty { display: inline-flex; align-items: center; gap: 6px; }
+.qty .iconbtn { width: 36px; height: 36px; font-size: 1.1rem; }
+.qty .iconbtn[disabled] { opacity: .4; cursor: default; }
+.qty-n { min-width: 2ch; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
+.svc-precio-lbl { display: grid; gap: 4px; font-size: .78rem; font-weight: 600; }
+.sugerido { align-items: center; gap: 8px; min-height: 24px; }
 .zona-borrar { border-top: 1px solid var(--linea-suave); padding-top: 12px; margin-top: 4px; }
 .opciones legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
 
