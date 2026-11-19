@@ -23,12 +23,12 @@
   };
 
   // acomoda las citas de un día en la cuadrícula de horas: posición y alto en minutos, y carriles para las que se empalman
-  api.layoutDay = (appointments) => {
+  api.layoutDay = (appointments, range) => {
     const minOfDay = (a) => Number(a.start.slice(11, 13)) * 60 + Number(a.start.slice(14, 16));
     const list = appointments.filter((a) => a.status !== "cancelada")
       .map((a) => { const s = minOfDay(a); return { appt: a, s, e: s + (Number(a.durationMin) || 30) }; })
       .sort((x, y) => x.s - y.s || x.e - y.e);
-    let startMin = 9 * 60, endMin = 20 * 60;
+    let startMin = range ? range.startMin : 9 * 60, endMin = range ? range.endMin : 20 * 60;
     for (const x of list) {
       startMin = Math.min(startMin, Math.floor(x.s / 60) * 60);
       endMin = Math.max(endMin, Math.ceil(x.e / 60) * 60);
@@ -172,6 +172,61 @@
     const h = Math.floor(min / 60), m = min % 60;
     return !h ? m + " min" : h + " h" + (m ? " " + m + " min" : "");
   };
+
+  /* ---------- horario y bloqueos ---------- */
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const hhmmMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const sinCero = (hhmm) => String(Number(hhmm.slice(0, 2))) + hhmm.slice(2, 5);
+  const weekdayOf = (key) => new Date(key + "T00:00:00Z").getUTCDay();
+  const addDaysKey = (key, n) => new Date(Date.parse(key + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+
+  // 0 = domingo; lunes a sábado de 8 a 18, domingo de descanso
+  api.DEFAULT_HOURS = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d !== 0, start: "08:00", end: "18:00" }));
+
+  api.dayHours = (hours, dateKey) => {
+    const d = weekdayOf(dateKey);
+    const h = Array.isArray(hours) && hours.length === 7 && hours[d] ? hours[d] : api.DEFAULT_HOURS[d];
+    return { open: !!h.open, start: h.start, end: h.end };
+  };
+
+  api.agendaRange = (hours) => {
+    const open = (Array.isArray(hours) && hours.length === 7 ? hours : api.DEFAULT_HOURS).filter((h) => h && h.open);
+    if (!open.length) return { startMin: 480, endMin: 1080 };
+    return { startMin: Math.min(...open.map((h) => hhmmMin(h.start))), endMin: Math.max(...open.map((h) => hhmmMin(h.end))) };
+  };
+
+  api.blocksOn = (blocks, dateKey) => blocks
+    .filter((b) => b.date <= dateKey && dateKey <= (b.endDate || b.date))
+    .sort((a, b) => (a.allDay === b.allDay ? (a.start || "").localeCompare(b.start || "") : a.allDay ? -1 : 1));
+
+  // avisos que no impiden guardar: descanso, fuera de horario y bloqueos
+  api.scheduleWarnings = (appt, { hours, blocks }) => {
+    const key = appt.start.slice(0, 10);
+    const s = hhmmMin(appt.start.slice(11, 16)), e = s + (Number(appt.durationMin) || 30);
+    const out = [];
+    const h = api.dayHours(hours, key);
+    if (!h.open) out.push("El " + DIAS[weekdayOf(key)] + " es tu día de descanso.");
+    else if (s < hhmmMin(h.start) || e > hhmmMin(h.end)) out.push("Está fuera de tu horario (" + sinCero(h.start) + " a " + sinCero(h.end) + ").");
+    for (const b of api.blocksOn(blocks || [], key)) {
+      if (b.allDay) out.push("Choca con el bloqueo «" + b.reason + "» de todo el día.");
+      else if (s < hhmmMin(b.end) && hhmmMin(b.start) < e) out.push("Choca con el bloqueo «" + b.reason + "» de " + b.start + " a " + b.end + ".");
+    }
+    return out;
+  };
+
+  api.nextVisitDate = ({ today, weeks, hours }) => {
+    let d = addDaysKey(today, weeks * 7);
+    for (let i = 0; i < 7 && !api.dayHours(hours, d).open; i++) d = addDaysKey(d, 1);
+    return d;
+  };
+
+  api.suggestedWeeks = (lines, services) => {
+    const ws = lines.map((l) => (services.find((v) => v.id === l.serviceId) || {}).returnWeeks).filter((w) => Number(w) > 0).map(Number);
+    return ws.length ? Math.min(...ws) : 3;
+  };
+
+  api.reminderMessage = (clientName, time) =>
+    "Hola " + String(clientName || "").trim().split(" ")[0] + ", te recuerdo tu cita mañana a las " + time + " en Nails Up. ¿Me confirmas, por favor?";
 
   root.NailsLogic = api;
   if (typeof module !== "undefined") module.exports = api;
