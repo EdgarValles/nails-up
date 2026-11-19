@@ -206,6 +206,7 @@ textarea { min-height: 80px; resize: vertical; }
 .check { display: flex; align-items: center; gap: 10px; font-weight: 500; }
 .check input { width: 20px; min-height: 20px; height: 20px; accent-color: var(--marca); }
 .opciones { border: 0; margin: 0; padding: 0; gap: 10px; }
+.zona-borrar { border-top: 1px solid var(--linea-suave); padding-top: 12px; margin-top: 4px; }
 .opciones legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
 
 .sheet-back { position: fixed; inset: 0; background: rgba(44, 26, 44, .42); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }

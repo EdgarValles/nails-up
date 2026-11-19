@@ -358,7 +358,23 @@
         wa ? h("a", { class: "btn sec", href: wa, target: "_blank", rel: "noopener" }, "Confirmar por WhatsApp") : h("span", {})),
       h("div", { class: "row between" },
         pend ? h("button", { class: "btn small ghost peligro", onclick: () => openSheet(() => confirmCancel(a.id)) }, "Cancelar cita") : h("span", {}),
-        h("button", { class: "btn small ghost", onclick: closeSheet }, "Cerrar")));
+        h("button", { class: "btn small ghost", onclick: closeSheet }, "Cerrar")),
+      L.canDeleteAppointment(a) && h("div", { class: "zona-borrar" },
+        h("button", { class: "btn small ghost peligro", onclick: () => openSheet(() => confirmDeleteAppt(a.id)) }, "Eliminar cita")));
+  }
+  // solo para errores de captura: una cancelación real se registra con Cancelar cita
+  function confirmDeleteAppt(id) {
+    const msg = h("div", { "aria-live": "polite" });
+    async function eliminar() {
+      const a = S.appts.find((x) => x.id === id);
+      if (!a || !L.canDeleteAppointment(a)) return msg.replaceChildren(h("div", { class: "note" }, "Esta cita ya fue cobrada y no se puede eliminar."));
+      if (await run(Store.remove("appointments", id), "Cita eliminada", msg)) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, "¿Eliminar esta cita?"),
+      h("p", { class: "muted" }, "Solo para citas capturadas por error. Si la clienta canceló, usa Cancelar cita para que quede en su historial."),
+      msg, h("div", { class: "row" },
+        busyBtn({ class: "btn danger" }, "Sí, eliminar", eliminar, "Eliminando…"),
+        h("button", { class: "btn ghost", onclick: () => openSheet(() => apptDetail(id)) }, "Volver")));
   }
   function confirmCancel(id) {
     const a = S.appts.find((x) => x.id === id);
@@ -427,7 +443,30 @@
         h("span", {}, h("div", { class: "name" }, a.serviceName), h("div", { class: "muted small" }, dmy(a.start.slice(0, 10)) + " " + timeOf(a)),
           L.cancelKind(a) && a.cancelReason ? h("div", { class: "muted small" }, a.cancelReason) : null),
         h("span", { class: "tag" }, a.status === "cobrada" ? L.formatMXN(a.total) : L.cancelKind(a) === "no_llego" ? "No llegó" : L.cancelKind(a) ? "Canceló" : a.status))))
-        : h("p", { class: "muted" }, "Todavía no tiene citas."));
+        : h("p", { class: "muted" }, "Todavía no tiene citas."),
+      h("div", { class: "zona-borrar" },
+        h("button", { class: "btn small ghost peligro", onclick: () => openSheet(() => confirmDeleteClient(c.id)) }, "Eliminar clienta")));
+  }
+  // sus citas se conservan (muestran "Clienta eliminada"); con citas pendientes no se deja borrar
+  function confirmDeleteClient(id) {
+    const c = clientOf(id);
+    const volver = () => openSheet(() => clientCard(id));
+    if (!c) return h("div", {}, h("p", {}, "Esta clienta ya no existe."), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar"));
+    const r = L.canDeleteClient(id, S.appts);
+    if (!r.ok) return h("div", { class: "stack" }, h("h2", {}, "No se puede eliminar a " + c.name),
+      h("p", {}, r.pendientes === 1 ? "Tiene 1 cita pendiente; cobra o cancela esa cita primero." : "Tiene " + r.pendientes + " citas pendientes; cobra o cancela esas citas primero."),
+      h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: volver }, "Volver")));
+    const msg = h("div", { "aria-live": "polite" });
+    async function eliminar() {
+      const ahora = L.canDeleteClient(id, S.appts);
+      if (!ahora.ok) return msg.replaceChildren(h("div", { class: "note" }, "Tiene citas pendientes; cobra o cancela esas citas primero."));
+      if (await run(Store.remove("clients", id), "Clienta eliminada", msg)) closeSheet();
+    }
+    return h("div", { class: "stack" }, h("h2", {}, "¿Eliminar a " + c.name + "?"),
+      h("p", { class: "muted" }, r.historial === 0 ? "No tiene citas." : r.historial === 1 ? "Su cita del historial se conserva." : "Sus " + r.historial + " citas del historial se conservan."),
+      msg, h("div", { class: "row" },
+        busyBtn({ class: "btn danger" }, "Sí, eliminar", eliminar, "Eliminando…"),
+        h("button", { class: "btn ghost", onclick: volver }, "No")));
   }
   function clientForm(id) {
     const c = id ? clientOf(id) : { name: "", phone: "", birthday: "", canal: "whatsapp", notes: "" };
