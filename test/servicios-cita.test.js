@@ -57,3 +57,9 @@ test("formatDuration en horas y minutos", () => {
   assert.strictEqual(L.formatDuration(90), "1 h 30 min");
   assert.strictEqual(L.formatDuration(0), "0 min");
 });
+
+test("apptServices de una cita vieja cobrada usa el precio cobrado", () => {
+  const vieja = { serviceId: "s1", serviceName: "Gel", serviceColor: "#c00", price: 300, subtotal: 450, status: "cobrada", durationMin: 45 };
+  assert.strictEqual(L.apptServices(vieja)[0].price, 450);
+  assert.strictEqual(L.apptServices({ ...vieja, status: "pendiente" })[0].price, 300);
+});

@@ -151,7 +151,9 @@
   api.apptServices = (a) => {
     if (Array.isArray(a.services) && a.services.length) return a.services.map((l) => ({ ...l }));
     if (!a.serviceId && !a.serviceName) return [];
-    return [{ serviceId: a.serviceId, name: a.serviceName || "Servicio", color: a.serviceColor, price: Number(a.price) || 0, durationMin: Number(a.durationMin) || 0 }];
+    // en las cobradas de antes, price era el de catálogo y lo cobrado quedó en subtotal
+    const cobrado = a.status === "cobrada" && typeof a.subtotal === "number";
+    return [{ serviceId: a.serviceId, name: a.serviceName || "Servicio", color: a.serviceColor, price: cobrado ? a.subtotal : Number(a.price) || 0, durationMin: Number(a.durationMin) || 0 }];
   };
 
   api.servicesTotals = (lines) => lines.reduce(
