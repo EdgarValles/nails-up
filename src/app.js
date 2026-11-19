@@ -579,36 +579,42 @@
     const c = clientOf(a0.clientId) || { id: a0.clientId, name: "Clienta" };
     const visits = L.paidVisitCount(a0.clientId, S.appts);
     let quitado = false;
-    const sub = h("input", { id: "p-sub", type: "number", min: "0", inputmode: "decimal", value: a0.price || "" });
+    // lo agendado, con precios editables: aquí se agrega lo que pidió en el momento
+    let lines = L.apptServices(a0);
+    const editor = servicesEditor({ lines, editablePrice: true, onChange: (l) => { lines = l; recalc(); } });
     const adv = h("input", { id: "p-adv", type: "number", min: "0", inputmode: "decimal", value: a0.advance || "" });
     const method = h("select", { id: "p-method" }, h("option", { value: "efectivo" }, "Efectivo"), h("option", { value: "transferencia" }, "Transferencia"));
     const info = h("div", { class: "stack", "aria-live": "polite" });
     const msg = h("div", { "aria-live": "polite" });
     let cur = { discount: { kind: "ninguno", label: "Sin descuento", amount: 0 }, total: 0, balance: 0 };
     function recalc() {
-      const subtotal = num(sub.value);
+      const subtotal = L.servicesTotals(lines).price;
       const sug = L.suggestDiscount({ client: c, paidVisits: visits, promos: S.promos, settings: settings(), today: todayKey(), subtotal });
       const discount = quitado ? { kind: "ninguno", label: "Sin descuento", amount: 0 } : sug;
       const ch = L.computeCharge({ subtotal, discountAmount: discount.amount, advance: num(adv.value) });
       cur = { discount, ...ch };
       info.replaceChildren(
-        sug.kind !== "ninguno" && h("div", { class: "note ok" }, quitado ? "Descuento quitado (" + sug.label + ")" : "Descuento sugerido: " + sug.label + " (−" + L.formatMXN(sug.amount) + ") ",
+        sug.kind === "ninguno" ? "" : h("div", { class: "note ok" }, quitado ? "Descuento quitado (" + sug.label + ")" : "Descuento sugerido: " + sug.label + " (−" + L.formatMXN(sug.amount) + ") ",
           h("button", { class: "btn small ghost", onclick: () => { quitado = !quitado; recalc(); } }, quitado ? "Aplicar descuento" : "Quitar descuento")),
+        h("div", { class: "row between muted" }, h("span", {}, "Subtotal"), h("span", {}, L.formatMXN(subtotal))),
         h("div", { class: "row between" }, h("span", {}, "Total"), h("span", { class: "big" }, L.formatMXN(ch.total))),
         h("div", { class: "row between muted" }, h("span", {}, "Saldo por cobrar tras el anticipo"), h("span", {}, L.formatMXN(ch.balance))));
     }
-    sub.addEventListener("input", recalc); adv.addEventListener("input", recalc);
+    adv.addEventListener("input", recalc);
     recalc();
     async function cobrar() {
       msg.replaceChildren();
       const fresh = S.appts.find((x) => x.id === id);
       if (!fresh || fresh.status !== "pendiente") return msg.append(h("div", { class: "note" }, "Esta cita ya fue cobrada o cancelada."));
-      if (!num(sub.value)) return msg.append(h("div", { class: "note" }, "Escribe el precio del servicio."));
-      const doc = { ...fresh, status: "cobrada", subtotal: num(sub.value), advance: num(adv.value), total: cur.total, balance: cur.balance, method: method.value, discountKind: cur.discount.kind, discountAmount: cur.discount.amount, paidAt: todayKey() };
+      if (!lines.length) return msg.append(h("div", { class: "note" }, "Agrega al menos un servicio."));
+      const subtotal = L.servicesTotals(lines).price;
+      if (!subtotal) return msg.append(h("div", { class: "note" }, "El total de los servicios es $0; escribe los precios."));
+      const doc = L.withServices({ ...fresh, status: "cobrada", subtotal, advance: num(adv.value), total: cur.total, balance: cur.balance, method: method.value, discountKind: cur.discount.kind, discountAmount: cur.discount.amount, paidAt: todayKey() }, lines);
       if (await run(Store.save("appointments", doc), "Cobrado", msg)) closeSheet();
     }
-    return h("div", { class: "stack" }, h("h2", {}, "Cobrar a " + c.name), h("div", { class: "muted" }, a0.serviceName, " · ", visits, " visitas cobradas"),
-      h("div", { class: "grid2" }, h("label", {}, "Precio del servicio", sub), h("label", {}, "Anticipo recibido", adv)),
+    return h("div", { class: "stack" }, h("h2", {}, "Cobrar a " + c.name), h("div", { class: "muted" }, visits, " visitas cobradas"),
+      h("div", { class: "stack campo" }, h("span", { class: "lbl" }, "Servicios"), editor.el),
+      h("label", {}, "Anticipo recibido", adv),
       h("label", {}, "Método de pago", method), info, msg,
       h("div", { class: "row" }, busyBtn({ class: "btn" }, "Cobrar", cobrar), h("button", { class: "btn ghost", onclick: closeSheet }, "Cerrar")));
   }
