@@ -281,7 +281,8 @@
     svcSel.addEventListener("change", () => { const s = serviceOf(svcSel.value); if (s && !dur.value) dur.value = s.durationMin; });
     const msg = h("div", { "aria-live": "polite" });
 
-    let saving = false, nuevaId = "";
+    // ids fijos para este formulario: un reintento sobrescribe en lugar de duplicar
+    let saving = false, idClienta = "", idCita = existing ? existing.id : "";
     async function save(force) {
       if (saving) return;
       saving = true;
@@ -298,16 +299,17 @@
       if (clientId === "__new") {
         const name = root.querySelector("#f-nn").value.trim(), phone = root.querySelector("#f-np").value;
         if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la clienta."));
-        const dup = L.findClientByPhone(S.clients, phone);
+        if (!idClienta) idClienta = Store.newId("clients");
+        const dup = L.findClientByPhone(S.clients.filter((x) => x.id !== idClienta), phone);
         if (dup) return msg.append(h("div", { class: "note" }, "Ya existe " + dup.name + " con ese teléfono. Elígela en la lista."));
-        if (!nuevaId) {
-          try { nuevaId = await Store.save("clients", { name, phone, canal: "whatsapp", birthday: "", notes: "" }); }
+        if (!clientOf(idClienta)) {
+          try { await Store.save("clients", { id: idClienta, name, phone, canal: "whatsapp", birthday: "", notes: "" }); }
           catch (e) { return showError(e, msg); }
         }
-        clientId = nuevaId;
+        clientId = idClienta;
       }
       const appt = {
-        ...(existing || {}), id: existing && existing.id,
+        ...(existing || {}), id: idCita || (idCita = Store.newId("appointments")),
         clientId, serviceId: svc.id, serviceName: svc.name, serviceColor: svc.color,
         start: date + "T" + time, durationMin: Number(dur.value) || svc.durationMin || 30,
         notes: root.querySelector("#f-notes").value.trim(), advance: num(root.querySelector("#f-adv").value),
@@ -377,7 +379,6 @@
         h("button", { class: "btn ghost", onclick: () => openSheet(() => apptDetail(id)) }, "Volver")));
   }
   function confirmCancel(id) {
-    const a = S.appts.find((x) => x.id === id);
     const msg = h("div", { "aria-live": "polite" });
     const opcion = (value, text) => h("label", { class: "check" }, h("input", { type: "radio", name: "cancel-kind", value }), text);
     const motivo = h("textarea", { id: "cancel-reason" });
@@ -385,7 +386,9 @@
       msg.replaceChildren();
       const sel = root.querySelector('input[name="cancel-kind"]:checked');
       if (!sel) return msg.append(h("div", { class: "note" }, "Elige qué pasó: si avisó o si no llegó."));
-      const doc = { ...a, status: "cancelada", cancelKind: sel.value, cancelReason: motivo.value.trim(), cancelledAt: todayKey() };
+      const fresh = S.appts.find((x) => x.id === id);
+      if (!fresh || fresh.status !== "pendiente") return msg.append(h("div", { class: "note" }, "Esta cita ya fue cobrada o cancelada."));
+      const doc = { ...fresh, status: "cancelada", cancelKind: sel.value, cancelReason: motivo.value.trim(), cancelledAt: todayKey() };
       if (await run(Store.save("appointments", doc), "Cita cancelada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, "¿Cancelar esta cita?"), h("p", { class: "muted" }, "La cita queda en el historial como cancelada y no cuenta como visita."),
@@ -474,17 +477,19 @@
     const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
     const mes = h("select", { id: "c-mes" }, h("option", { value: "" }, "Mes"), meses.map((m, i) => h("option", { value: String(i + 1).padStart(2, "0"), selected: c.birthday && c.birthday.slice(0, 2) === String(i + 1).padStart(2, "0") }, m)));
     const dia = h("input", { id: "c-dia", type: "number", min: "1", max: "31", inputmode: "numeric", placeholder: "Día", value: c.birthday ? Number(c.birthday.slice(3, 5)) : "" });
+    let docId = id || "";
     async function save() {
       msg.replaceChildren();
+      if (!docId) docId = Store.newId("clients");
       const name = root.querySelector("#c-name").value.trim(), phone = root.querySelector("#c-phone").value.trim();
       if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la clienta."));
       if (phone && !L.normalizePhone(phone)) return msg.append(h("div", { class: "note" }, "El teléfono debe tener 10 dígitos."));
-      const dup = phone && L.findClientByPhone(S.clients.filter((x) => x.id !== id), phone);
+      const dup = phone && L.findClientByPhone(S.clients.filter((x) => x.id !== docId), phone);
       if (dup) return msg.append(h("div", { class: "note" }, "Ya existe " + dup.name + " con ese teléfono. ", h("button", { class: "btn small ghost", onclick: () => openSheet(() => clientCard(dup.id)) }, "Abrir su ficha")));
       let birthday = "";
       const m = mes.value, d = Number(dia.value);
       if (m && d >= 1 && d <= 31) birthday = m + "-" + String(d).padStart(2, "0");
-      const doc = { ...(id ? c : {}), id, name, phone, birthday, canal: root.querySelector("#c-canal").value, notes: root.querySelector("#c-notes").value.trim() };
+      const doc = { ...(id ? c : {}), id: docId, name, phone, birthday, canal: root.querySelector("#c-canal").value, notes: root.querySelector("#c-notes").value.trim() };
       if (await run(Store.save("clients", doc), "Clienta guardada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar clienta" : "Nueva clienta"),
@@ -508,11 +513,13 @@
     const palette = h("div", { class: "colors", role: "group", "aria-label": "Color del esmalte" });
     const paint2 = () => palette.replaceChildren(...TONES.map((t) => h("button", { style: "background:" + t, "aria-label": "Color " + t, "aria-pressed": String(t === color), onclick: () => { color = t; paint2(); } })));
     paint2();
+    let docId = id || "";
     async function save() {
       msg.replaceChildren();
+      if (!docId) docId = Store.newId("services");
       const name = root.querySelector("#s-name").value.trim();
       if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre del servicio."));
-      const doc = { ...(id ? v : {}), id, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
+      const doc = { ...(id ? v : {}), id: docId, name, price: num(root.querySelector("#s-price").value), durationMin: Number(root.querySelector("#s-dur").value) || 30, color, active: root.querySelector("#s-active").checked };
       if (await run(Store.save("services", doc), "Servicio guardado", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar servicio" : "Nuevo servicio"),
@@ -621,14 +628,16 @@
     const tipo = h("select", { id: "pr-type" }, h("option", { value: "temporada", selected: p.type === "temporada" }, "Temporada (con fechas)"), h("option", { value: "cumpleanos", selected: p.type === "cumpleanos" }, "Cumpleaños"));
     const fechas = h("div", { class: "grid2", hidden: p.type === "cumpleanos" }, h("label", {}, "Desde", h("input", { id: "pr-from", type: "date", value: p.startDate || "" })), h("label", {}, "Hasta", h("input", { id: "pr-to", type: "date", value: p.endDate || "" })));
     tipo.addEventListener("change", () => { fechas.hidden = tipo.value === "cumpleanos"; });
+    let docId = id || "";
     async function save() {
       msg.replaceChildren();
+      if (!docId) docId = Store.newId("promos");
       const name = root.querySelector("#pr-name").value.trim(), percent = Number(root.querySelector("#pr-pct").value), type = tipo.value;
       const from = root.querySelector("#pr-from").value, to = root.querySelector("#pr-to").value;
       if (!name) return msg.append(h("div", { class: "note" }, "Escribe el nombre de la promoción."));
       if (!(percent > 0 && percent <= 100)) return msg.append(h("div", { class: "note" }, "El descuento debe estar entre 1 y 100."));
       if (type === "temporada" && (!from || !to || to < from)) return msg.append(h("div", { class: "note" }, "Indica las fechas; la fecha final no puede ser antes de la inicial."));
-      const doc = { ...(id ? p : {}), id, name, type, percent, active: root.querySelector("#pr-act").checked, ...(type === "temporada" ? { startDate: from, endDate: to } : { startDate: "", endDate: "" }) };
+      const doc = { ...(id ? p : {}), id: docId, name, type, percent, active: root.querySelector("#pr-act").checked, ...(type === "temporada" ? { startDate: from, endDate: to } : { startDate: "", endDate: "" }) };
       if (await run(Store.save("promos", doc), "Promoción guardada", msg)) closeSheet();
     }
     return h("div", { class: "stack" }, h("h2", {}, id ? "Editar promoción" : "Nueva promoción"),

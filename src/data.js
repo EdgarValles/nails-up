@@ -47,6 +47,12 @@
     return ref.id;
   };
 
+  // id fijo para un formulario: si la respuesta se pierde y se reintenta, se sobrescribe en vez de duplicar
+  Store.newId = (name) => {
+    needDb();
+    return db.collection(name).doc().id;
+  };
+
   Store.remove = async (name, id) => {
     needDb();
     await db.collection(name).doc(id).delete();

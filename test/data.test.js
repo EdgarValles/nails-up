@@ -102,3 +102,15 @@ test("seedDefaults waits for a confirmed snapshot, ignoring an empty cached one"
   assert.strictEqual(written.length, 0); // settings ya existe; services sigue sin confirmarse
   void seeding;
 });
+
+test("newId da un id nuevo que, al reintentar save con él, no duplica", async () => {
+  const Store = fresh(); const db = fakeDb(); Store.init(db);
+  let last = [];
+  Store.subscribe("clients", (docs) => (last = docs));
+  const id = Store.newId("clients");
+  assert.ok(id);
+  assert.notStrictEqual(Store.newId("clients"), id);
+  await Store.save("clients", { id, name: "Ana" });
+  await Store.save("clients", { id, name: "Ana" });
+  assert.deepStrictEqual(last, [{ id, name: "Ana" }]);
+});
